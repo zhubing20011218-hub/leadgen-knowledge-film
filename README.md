@@ -1,0 +1,66 @@
+# leadgen-knowledge-film
+
+做**引流用的竖屏卡点知识短片**的 AI 技能（Claude Code / DeepSeek 等支持 skill 的 AI 助手都能用）：
+1080×1920、30 / 60 / 90 秒、没有旁白，一句粗字幕正好一小节，画面每一次变化都落在音乐重拍上。
+
+![预览](docs/preview.jpg)
+
+> 上图是用 DeepSeek（deepseek-flash）按本技能写出的 32 秒示例《被裁之后》。片里的数字都是**示例**，不是真实数据。
+
+## 它怎么做到"便宜模型也能稳定出片"
+
+AI 不写画面代码，只写一份 `film.json`：字幕，加上每一镜用哪个画面件、填什么字。
+画面由技能自带的 12 个霓虹风格画面件来画：片名卡、一句话、大数字、横条、环形占比、人生节点、岔路、对比、打勾清单、步骤、飞轮、卡片墙。
+所以排版错、字压字、出画这类毛病由画面件管住，和用哪个模型无关。
+
+出片前 `check_film.py` 会拦下这些问题：字幕带标点或太长、数字没写出处、出现联系方式、出现收入承诺（月入、回本、零成本…）、写给自己看的话上屏、相邻两章同色。
+实测 DeepSeek 一般改两三轮就能通过。
+
+## 流程
+
+1. **先问需求**（7 个问题）：给谁看、他的处境、你有什么证据、看完让他做什么、时长、不能出现的说法、把人引到哪个方向。没问清楚不开工。
+2. **定结构**：推荐的引流骨架是"人生节点 → 断裂 → 分叉 → 收窄 → 出路 → 行动"。出路默认是跨境电商，可以换；结构也可以和用户商量着改。
+3. **写 film.json**：一句一小节，一章一个主画面，一句往上加一样东西。
+4. **出片**：`bash scripts/build.sh <工程>` 依次做检查、合成配乐、渲染画面、混音到 −14 LUFS，并在文件里写入 AI 生成标记，最后出一张自查拼图。
+
+## 安装
+
+```bash
+git clone https://github.com/zhubing20011218-hub/leadgen-knowledge-film ~/.claude/skills/leadgen-knowledge-film
+python3 -m pip install playwright pillow      # 渲染用本机的 Chrome
+python3 ~/.claude/skills/leadgen-knowledge-film/engine/get_fonts.py   # 下载开源字体（约 40MB）
+```
+
+还需要 node 和 ffmpeg。然后在 AI 助手里说"做一条引流的知识短片"，它会先问你需求。
+
+手动跑示例：
+
+```bash
+S=~/.claude/skills/leadgen-knowledge-film
+bash $S/scripts/new_film.sh ~/Desktop/film-demo
+cp $S/examples/01-被裁之后/film.json ~/Desktop/film-demo/
+bash $S/scripts/build.sh ~/Desktop/film-demo --sheet-only   # 先出拼图看画面（约 20 秒）
+bash $S/scripts/build.sh ~/Desktop/film-demo                # 出整片（30 秒片约 7 分钟）
+```
+
+## 目录
+
+| | |
+|---|---|
+| `SKILL.md` | 给 AI 读的流程和红线 |
+| `references/` | 需求访谈、叙事骨架、film.json 格式和 12 个画面件、配乐与卡点、检查表、合规红线 |
+| `template/` | 画面模板（播放器 + 12 个画面件 + 章节色） |
+| `engine/` | 逐帧渲染引擎 |
+| `scripts/` | 建工程、一键出片、检查、按片子结构生成配乐 |
+| `examples/` | 示例需求和 film.json |
+
+## 红线
+
+不编数字（编的一律标「示例」，示例片不发布）、不承诺收入、不贩卖焦虑（讲了焦虑就要给出口）、不放联系方式、发布时打开平台的"AI 生成内容"声明。
+
+## 授权
+
+本仓库代码 MIT。渲染引擎来自 [HeyChengC/vibe-knowledge-film](https://github.com/HeyChengC/vibe-knowledge-film)（MIT），
+配乐合成器来自 [8533502-dev/deepseek-opus-motion-skill](https://github.com/8533502-dev/deepseek-opus-motion-skill)（MIT），
+字体为 SIL OFL 1.1，详见 `LICENSE-THIRD-PARTY.md`。
+仓库里不含任何第三方音乐。和抖音上的任何账号都没有关系。
