@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""校验一轮访谈结果（brief.json）。不过就不许开工。
+
+用法：
+  python3 scripts/validate_brief.py examples/01-被裁之后/brief.json
+退出码 0 = 可以进第 1 步；1 = 有错，按「怎么改」改完再交。
+
+brief.json 字段：
+  angle      laid-off | pivot-list | ai-ecommerce | own-mistake
+  audience   给谁看（一句话，≤30 字）
+  pain       处境三句（每条 ≤30 字，必须有具体年龄/岗位/事件）
+  proof      真实证据 2–4 条（每条 ≤40 字，至少 2 条带数字）
+  cta        下一步（主页合集 / 评论区 / 收藏）
+  seconds    30 | 60 | 90
+  mood       cold | tight | light
+  banned     不出现的说法（数组，可空）
+"""
+import json
+import re
+import sys
+
+ANGLES = {
+    'laid-off': ('A 被裁之后', '断裂 → 分叉 → 收窄 → 出路', '自己的店 + 真实订单'),
+    'pivot-list': ('B 转行盘点', '把 5 条路摊开比门槛', '公开规则 + 成本结构'),
+    'ai-ecommerce': ('C 电商+AI', 'AI 复刻「互联网+」的路径', '自己用 AI 干的活'),
+    'own-mistake': ('D 我的弯路', '我亏在哪 → 正确算法', '真实亏损数据'),
+}
+MOODS = {'cold': ('冷峻', 120), 'tight': ('紧张', 128), 'light': ('轻快', 112)}
+BARS = {30: [0, 3, 5, 8, 11, 13], 60: [0, 6, 10, 16, 22, 26], 90: [0, 9, 15, 24, 33, 39]}
+
+BANNED_WORDS = (
+    '微信', '加微', 'QQ', '私信发', '扫码', '手机号', '二维码',
+    '月入', '稳赚', '包赚', '包教包会', '回本', '躺赚',
+    '最便宜', '全网最低', '第一品牌', '永久', '保证', '绝对',
+)
+
+
+def has_digit(s):
+    # 阿拉伯数字或中文数字都算（"两万块"也是数字）
+    return bool(re.search(r'\d', s)) or bool(re.search(r'[零一二两三四五六七八九十百千万亿]', s))
+
+
+def has_person_marker(s):
+    return bool(re.search(r'岁|年|工厂|厂子|公司|部门|岗位|店|毕业|结婚|孩子|房贷|工资|裁员|被优化|辞退|失业|简历|打工|上班', s))
+
+
+def check(b):
+    errs, warns = [], []
+
+    if b.get('angle') not in ANGLES:
+        errs.append(f'angle 必须是这四个之一：{", ".join(ANGLES)}')
+
+    aud = (b.get('audience') or '').strip()
+    if not (2 <= len(aud) <= 30):
+        errs.append(f'audience 要 2–30 字（现在 {len(aud)} 字）')
+
+    pain = b.get('pain') or []
+    if not (2 <= len(pain) <= 4):
+        errs.append(f'pain（处境）要 2–4 句（现在 {len(pain)} 句）')
+    for i, p in enumerate(pain, 1):
+        if len(p) > 30:
+            errs.append(f'pain 第 {i} 句超过 30 字（现在 {len(p)} 字）')
+        if not has_person_marker(p):
+            errs.append(f'pain 第 {i} 句太抽象（「{p}」）：要写具体年龄/岗位/发生了什么')
+
+    proof = b.get('proof') or []
+    if not (2 <= len(proof) <= 4):
+        errs.append(f'proof（证据）要 2–4 条（现在 {len(proof)} 条）')
+    for i, p in enumerate(proof, 1):
+        if len(p) > 40:
+            errs.append(f'proof 第 {i} 条超过 40 字（现在 {len(p)} 字）')
+    if sum(1 for p in proof if has_digit(p)) < 2:
+        errs.append('proof 至少 2 条要带数字（进价/运费/佣金/退货率/客单价都行）')
+
+    if not (b.get('cta') or '').strip():
+        errs.append('cta（下一步）不能空：主页合集 / 评论区 / 收藏')
+
+    if b.get('seconds') not in BARS:
+        errs.append('seconds 只能是 30 / 60 / 90')
+    if b.get('mood') not in MOODS:
+        errs.append('mood 只能是 cold / tight / light')
+
+    text = ' '.join([aud] + list(pain) + list(proof) + [str(b.get('cta', ''))])
+    for w in BANNED_WORDS:
+        if w in text:
+            errs.append(f'出现违规说法「{w}」（见 references/06-合规红线.md）')
+    for w in b.get('banned') or []:
+        if w and w in text:
+            errs.append(f'踩到用户自己的禁用词「{w}」')
+
+    if b.get('seconds') == 90 and len(proof) < 3:
+        warns.append('90 秒建议给 3 条以上证据，否则中段会空')
+    if b.get('angle') == 'own-mistake' and not any('亏' in p or '赔' in p for p in proof):
+        warns.append('D 我的弯路：最好有一条"我自己亏了多少"的证据')
+    if b.get('angle') == 'ai-ecommerce' and not any('AI' in p or 'ai' in p for p in proof):
+        warns.append('C 电商+AI：需要一条"我自己用 AI 干了什么"的证据')
+
+    return errs, warns
+
+
+def plan(b):
+    name, arc, need = ANGLES[b['angle']]
+    mood, bpm = MOODS[b['mood']]
+    sec = b['seconds']
+    bars = BARS[sec]
+    return [
+        f'角度：{name}    叙事：{arc}    关键证据：{need}',
+        f'配乐：{mood} {bpm} BPM    时长：{sec} 秒（{sec * bpm // 60 // 4 + 1} 小节左右）',
+        f'GRID.bars = {bars}',
+        '六拍：人生节点 / 断裂 / 分叉 / 收窄 / 出路 / 行动',
+        f'出口：{b["cta"]}（不出联系方式）',
+    ]
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__)
+        return 1
+    b = json.load(open(sys.argv[1], encoding='utf-8'))
+    errs, warns = check(b)
+    name = ANGLES.get(b.get('angle'), ('?', '', ''))[0]
+    print(f'文件：{sys.argv[1]}')
+    print(f'角度：{name}    情绪：{MOODS.get(b.get("mood"), "?")[0]}    时长：{b.get("seconds", "?")} 秒')
+    print('—' * 50)
+    if errs:
+        print(f'不能开工，{len(errs)} 处要改：')
+        for e in errs:
+            print(f'  ✗ {e}')
+    else:
+        print('✓ 访谈通过，可以进第 1 步（定角度 → 故事板）')
+        for line in plan(b):
+            print(f'  · {line}')
+    for w in warns:
+        print(f'  ! 建议：{w}')
+    return 1 if errs else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

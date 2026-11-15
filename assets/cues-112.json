@@ -1,0 +1,185 @@
+{
+  "duration": 30,
+  "bpm": 112,
+  "loop": false,
+  "palette": "data",
+  "bed": [
+    {
+      "type": "pad",
+      "note": "A2",
+      "start": 0,
+      "end": 30,
+      "gain": 0.16,
+      "fade": 2.0
+    },
+    {
+      "type": "pad",
+      "note": "F3",
+      "start": 10.4,
+      "end": 22.4,
+      "gain": 0.1,
+      "fade": 0.8
+    },
+    {
+      "type": "pad",
+      "note": "C3",
+      "start": 26.4,
+      "end": 30,
+      "gain": 0.12,
+      "fade": 0.6
+    }
+  ],
+  "patterns": [
+    {
+      "type": "pluck",
+      "every": 1,
+      "start": 0.4,
+      "end": 6.4,
+      "notes": [
+        "A4",
+        "-",
+        "E5",
+        "-"
+      ],
+      "gain": 0.11,
+      "decay": 0.994
+    },
+    {
+      "type": "hat",
+      "every": 0.5,
+      "start": 6.4,
+      "end": 10.4,
+      "gain": 0.1
+    },
+    {
+      "type": "kick",
+      "every": 2,
+      "start": 10.4,
+      "end": 22.4,
+      "gain": 0.55
+    },
+    {
+      "type": "clap",
+      "every": 2,
+      "start": 10.6,
+      "end": 22.4,
+      "gain": 0.12
+    },
+    {
+      "type": "hat",
+      "every": 0.5,
+      "start": 10.4,
+      "end": 22.4,
+      "gain": 0.12
+    },
+    {
+      "type": "pluck",
+      "every": 0.5,
+      "start": 10.4,
+      "end": 22.4,
+      "notes": [
+        "A3",
+        "E4",
+        "C4",
+        "E4"
+      ],
+      "gain": 0.11,
+      "decay": 0.992
+    },
+    {
+      "type": "bell",
+      "every": 2,
+      "start": 22.4,
+      "end": 26.4,
+      "notes": [
+        "A5",
+        "-"
+      ],
+      "gain": 0.14
+    },
+    {
+      "type": "kick",
+      "every": 2,
+      "start": 26.4,
+      "end": 29.6,
+      "gain": 0.5
+    },
+    {
+      "type": "clap",
+      "every": 2,
+      "start": 26.6,
+      "end": 29.6,
+      "gain": 0.12
+    },
+    {
+      "type": "hat",
+      "every": 0.5,
+      "start": 26.4,
+      "end": 29.6,
+      "gain": 0.11
+    },
+    {
+      "type": "pluck",
+      "every": 0.5,
+      "start": 26.4,
+      "end": 29.6,
+      "notes": [
+        "C4",
+        "G4",
+        "E4",
+        "G4"
+      ],
+      "gain": 0.11,
+      "decay": 0.993
+    },
+    {
+      "type": "bell",
+      "every": 4,
+      "start": 10.4,
+      "end": 26.4,
+      "notes": [
+        "A5",
+        "-",
+        "E5",
+        "-"
+      ],
+      "gain": 0.1
+    }
+  ],
+  "events": [
+    {
+      "t": 6.4,
+      "type": "whoosh",
+      "dur": 0.7,
+      "gain": 0.3
+    },
+    {
+      "t": 10.4,
+      "type": "drop",
+      "freq": 700,
+      "gain": 0.32
+    },
+    {
+      "t": 16.4,
+      "type": "knock",
+      "gain": 0.22
+    },
+    {
+      "t": 22.4,
+      "type": "whoosh",
+      "dur": 0.6,
+      "gain": 0.26
+    },
+    {
+      "t": 26.4,
+      "type": "drop",
+      "freq": 900,
+      "gain": 0.3
+    },
+    {
+      "t": 29.4,
+      "type": "boom",
+      "gain": 0.22
+    }
+  ]
+}

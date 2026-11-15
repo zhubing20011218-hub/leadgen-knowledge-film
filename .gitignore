@@ -1,0 +1,10 @@
+# 大文件不进仓库:字体由 engine/get_fonts.py 下载,成片和截图在各自工程里
+engine/fonts/*.ttf
+*.mp4
+*.mov
+*.wav
+renders/
+review/
+__pycache__/
+.DS_Store
+.env*
