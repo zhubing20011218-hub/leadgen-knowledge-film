@@ -57,7 +57,7 @@ def numbers_in(text):
 def capacity(d):
     ty = d.get("type"); L = lambda k: len(d.get(k) or [])
     return {"title": 1, "statement": 1, "number": max(1, L("values")), "bars": L("rows"), "ring": 1 + L("rows"),
-            "timeline": 2 if d.get("breakAt") is not None else 1, "fork": max(2, L("paths")), "compare": 2,
+            "timeline": 2 if d.get("breakAt") is not None else 1, "fork": 1 if d.get("focus") is not None else max(2, L("paths")), "compare": 2,
             "checklist": L("rows"), "steps": L("rows"), "cycle": L("nodes"), "cards": L("items")}.get(ty, 1)
 
 
@@ -117,6 +117,7 @@ def main():
         if ty == "number" and len(d.get("values") or []) > len(s["lines"]) + 3: warn.append(f"{tag} number 的值比句子多太多，挤在一句里会看不清")
         if ty == "bars" and any(r.get("tag") and (len(str(r["tag"])) <= 2 or str(r["tag"]) in str(d.get("unit", ""))) for r in d.get("rows") or []): warn.append(f"{tag} bars 的 tag 像是单位（单位写在 unit 里，tag 写一句补充或留空）")
         if ty == "steps" and any(re.fullmatch(r"\s*0?\d+\s*", str(r.get("note", "x"))) for r in d.get("rows") or []): warn.append(f"{tag} steps 的 note 只写了编号，编号会自动画，note 留空或写一句补充")
+        if ty == "fork" and d.get("focus") is not None and not (0 <= int(d["focus"]) < len(d.get("paths") or [])): err.append(f"{tag} focus 超出 paths 范围")
         if ty == "fork" and d.get("pick") is not None and not (0 <= int(d["pick"]) < len(d.get("paths") or [])): err.append(f"{tag} pick 超出 paths 范围")
         if ty == "timeline" and d.get("breakAt") is not None and not (0 <= int(d["breakAt"]) < len(d.get("nodes") or []) - 1): err.append(f"{tag} breakAt 要小于节点数 - 1")
         if ty == "timeline" and d.get("breakStep") is not None and int(d["breakStep"]) >= len(s["lines"]): err.append(f"{tag} breakStep={d['breakStep']} 但这一镜只有 {len(s['lines'])} 句，裂不到")
@@ -127,8 +128,8 @@ def main():
         if ty in ("steps", "checklist", "cards", "cycle"):
             k = len(d.get("rows") or d.get("items") or d.get("nodes") or [])
             for ln in s["lines"]:
-                m = re.search(r"([0-9]+|[一二两三四五六七八九十]) ?(步|条|件事|个)", str(ln.get("text", "")))
-                if m and m.group(2) in ("步", "条", "件事") and int(cn2num(m.group(1)) if not m.group(1).isdigit() else m.group(1)) != k:
+                m = re.search(r"([0-9]+|[一二两三四五六七八九十]) ?(步|件事|条路)", str(ln.get("text", "")))   # "一条视频"的"条"是量词，不核对
+                if m and int(cn2num(m.group(1)) if not m.group(1).isdigit() else m.group(1)) != k:
                     err.append(f"{tag} 字幕说「{m.group(0)}」，但画面只有 {k} 条：让两边对上（改字幕里的数，或补齐条目）")
         if ty == "bars" and len({str(r.get("value")) for r in d.get("rows") or []}) == 1 and len(d.get("rows") or []) > 1: err.append(f"{tag} bars 每条的值都一样，比不出大小：换成有差别的真实数，或者换件（checklist / steps）")
         notes = [d.get("note")] + [ln.get("note") for ln in s["lines"]]
@@ -149,7 +150,7 @@ def main():
                 for v in numbers_in(x): where.setdefault(v, f"{pth}「{x}」")
             for j, ln in enumerate(s["lines"]):
                 for v in numbers_in(str(ln.get("text", ""))): where.setdefault(v, f"这一镜第{j + 1}句字幕「{ln.get('text')}」")
-            odd = sorted(v for v in where if v > 10 and v not in brief_nums and not (1900 <= v <= 2100))
+            odd = sorted(v for v in where if v > 2 and v not in brief_nums and not (1900 <= v <= 2100))
             if odd:
                 nums = "、".join(f"{v:g}（在 {where[v]}）" for v in odd)
                 if re.search("按.*算|来源", note_txt): warn.append(f"{tag} 数字 {nums} 不在 brief 里（note 写了怎么算的 / 来源，放行，自己再核对一遍）")

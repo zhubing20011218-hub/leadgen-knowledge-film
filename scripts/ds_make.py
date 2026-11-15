@@ -180,7 +180,7 @@ def main():
         save(film); warned = False; last = None
         for r in range(rounds + 1):
             ok, out, errs, warns = check(proj)
-            stuck = bool(errs) and errs == last; last = errs
+            stuck = bool(errs) and last is not None and len(errs) >= len(last); last = errs   # 错误没减少 = 卡住
             print("   " + out.splitlines()[0] + ("　✓" if ok else f"　✗ {len(errs)} 个错"))
             todo = errs + ([] if warned else warns)
             if (ok and (warned or not warns)) or r == rounds: return film, ok

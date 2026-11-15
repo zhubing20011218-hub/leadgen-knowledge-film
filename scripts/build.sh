@@ -37,10 +37,17 @@ echo "== 4/5 混音到 -14 LUFS、真峰 ≤ -1 dBTP，写入 AI 生成标记"
 MIX="alimiter=limit=0.4:level=false:attack=1:release=60,loudnorm=I=-14:TP=-2:LRA=11,alimiter=limit=0.79:level=false:attack=1:release=60,aresample=48000"
 NAME="$($PY -c "import json,sys; print(json.load(open(sys.argv[1],encoding='utf-8')).get('title') or 'film')" "$P/film.json")"
 OUT="$P/renders/${NAME}.mp4"
-ffmpeg -v error -y -i "$P/renders/raw.mp4" -i "$P/public/score.wav" \
-  -af "$MIX" -c:v copy -c:a aac -b:a 192k -shortest \
-  -metadata comment="AIGC: 本视频由 AI 辅助生成" -metadata description="AI-generated content" -movflags +faststart "$OUT"
-ffmpeg -hide_banner -i "$OUT" -af ebur128=peak=true -f null - 2>&1 | grep -E "^\s+(I|Peak):" | tr -s ' ' | sed 's/^/   /'
+mux() {   # $1 = 额外的音量修正（dB）
+  ffmpeg -v error -y -i "$P/renders/raw.mp4" -i "$P/public/score.wav" \
+    -af "$MIX,volume=${1}dB" -c:v copy -c:a aac -b:a 192k -shortest \
+    -metadata comment="AIGC: 本视频由 AI 辅助生成" -metadata description="AI-generated content" -movflags +faststart "$OUT"
+}
+measure() { ffmpeg -hide_banner -i "$OUT" -af ebur128=peak=true -f null - 2>&1 | python3 -c "import sys,re; s=sys.stdin.read(); i=re.findall(r'I:\s+(-?[\d.]+) LUFS', s)[-1]; p=re.findall(r'Peak:\s+(-?[\d.]+) dBFS', s)[-1]; print(i, p)"; }
+# 第一遍混完实测，再按差多少修正一次：响度对到 -14 LUFS，真峰不超过 -1.2 dBFS（AAC 编码会让峰值冲高一点，所以留余量）
+mux 0; read I PK < <(measure)
+G=$(python3 -c "print(round(min(-14 - $I, -1.2 - $PK), 2))")
+mux "$G"; read I PK < <(measure)
+echo "    响度 $I LUFS · 真峰 $PK dBFS（修正 ${G} dB）"
 
 echo "== 5/5 拼图自查 → $P/review/sheet.jpg"
 $PY "$SKILL/engine/render.py" "$P" --sheet $TIMES

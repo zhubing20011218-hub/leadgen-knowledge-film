@@ -38,6 +38,23 @@ function fit(fr, str, font, max, width, track = 0) {
   let s = max; while (s > 24 && fr.measure(str, { font, size: s, track }) > width) s -= 4; return s;
 }
 
+function forkFocus(fr, c, paths, f) {
+  const n = paths.length, ox = CX, oy = 1300, cy = 640, cw = Math.min(300, (CW - 30 * (n - 1)) / n), ch = 170;
+  const xs = paths.map((_, i) => X0 + cw / 2 + i * (CW - cw) / Math.max(n - 1, 1)), k = E.out3(seg(c.lt, 0, 0.35)), kf = E.out3(seg(c.lt, 0.15, 0.5));
+  fr.spark(ox, oy, 8, c.col, k);
+  paths.forEach((p, i) => {
+    const on = i === f, pts = []; for (let s = 0; s <= 24; s++) { const u = s / 24; pts.push([lerp(ox, xs[i], E.io3(u)), lerp(oy, cy + ch / 2, u)]); }
+    fr.poly(pts, { color: on ? c.col : '#8A90A8', w: on ? 5 : 2, a: on ? kf : 0.35 * k, glow: on ? 18 : 0 });
+    fr.g({ at: [xs[i], cy], s: on ? lerp(1, 1.12, kf) : 1 }, () => {
+      card(fr, -cw / 2, -ch / 2, cw, ch, on ? c.col : '#8A90A8', { a: k * (on ? 1 : 0.4), edge: on ? 0.9 : 0.3, glow: on ? 24 : 0 });
+      fr.text(p.label, 0, -22, { font: 'sansh', size: fit(fr, p.label, 'sansh', 48, cw - 30), color: on ? c.col : INK.text, a: k * (on ? 1 : 0.5), glow: on ? 18 : 0 });
+      if (p.sub) fr.text(p.sub, 0, 40, { font: 'sans', size: Math.min(28, fit(fr, p.sub, 'sans', 28, cw - 30)), color: INK.dim, a: k * (on ? 1 : 0.4) });
+    });
+  });
+  const p = paths[f] || {};   // 下方放大讲这一条
+  if (p.sub) fr.text(p.sub, CX, 1010 + (1 - kf) * 20, { font: 'sansh', size: fit(fr, p.sub, 'sansh', 72, CW), color: INK.white, a: kf, glow: 20, glowColor: c.col });
+}
+
 const SCENES = {
 
   /* 片名卡：{kicker?, top, big, bottom} —— 左对齐，big 是全片最大的字 */
@@ -168,9 +185,11 @@ const SCENES = {
     if (kb > 0) fr.flash(0.18 * (1 - seg(c.lt, bt, bt + 0.3)), red);
   },
 
-  /* 岔路：{paths:[{label, sub}], pick: 2} —— 第一句路长出来，之后每句划掉一条，最后一句点亮 pick */
+  /* 岔路：{paths:[{label, sub}], pick: 2} —— 第一句路长出来，之后每句划掉一条，最后一句点亮 pick
+   * {paths, focus: 1} —— 只是"现在讲这一条"：这一条亮、其他变暗，不划掉（逐条讲几条路时，每句一镜用 focus） */
   fork(fr, c) {
     const d = c.d, paths = d.paths || [], n = paths.length, pick = d.pick != null ? Number(d.pick) : n - 1;
+    if (d.focus != null) return forkFocus(fr, c, paths, Number(d.focus));
     const ox = CX, oy = 1300, cy = 640, cw = Math.min(300, (CW - 30 * (n - 1)) / n), ch = 170;
     const xs = paths.map((_, i) => X0 + cw / 2 + i * (CW - cw) / Math.max(n - 1, 1));
     const kills = paths.map((_, i) => i).filter(i => i !== pick);
