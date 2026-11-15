@@ -1,20 +1,26 @@
 #!/usr/bin/env bash
 # 一条命令出片：检查 → 配乐 → 渲画面 → 混音（-14 LUFS）→ 写入 AI 生成标记 → 拼图自查
-#   bash scripts/build.sh <工程目录> [--sheet-only 只出拼图 | --remix 只重新配乐混音、不重渲画面]
+#   bash scripts/build.sh <工程目录> [--sheet-only 只出拼图 | --remix 只重新配乐混音、不重渲画面 | --update-template 先换成最新模板]
 # 需要：python3（装了 playwright 和 pillow）、node、ffmpeg、本机 Chrome。缺什么会直接告诉你。
 set -euo pipefail
 SKILL="$(cd "$(dirname "$0")/.." && pwd)"
 P="$(cd "${1:?用法: bash scripts/build.sh <工程目录>}" && pwd)"
-PY="${PYTHON:-python3}"
-$PY -c "import playwright, PIL" 2>/dev/null || { echo "缺 Python 依赖：$PY -m pip install playwright pillow（或者用 PYTHON=<装好的 python> 指定）"; exit 2; }
+PY="${PYTHON:-}"; [ -z "$PY" ] && [ -x "$SKILL/.venv/bin/python" ] && PY="$SKILL/.venv/bin/python"; PY="${PY:-python3}"
+$PY -c "import playwright, PIL" 2>/dev/null || { echo "缺 Python 依赖：先跑一次 bash $SKILL/scripts/setup.sh"; exit 2; }
 command -v node >/dev/null || { echo "缺 node"; exit 2; }
 command -v ffmpeg >/dev/null || { echo "缺 ffmpeg"; exit 2; }
 $PY "$SKILL/engine/get_fonts.py" --check >/dev/null || $PY "$SKILL/engine/get_fonts.py"
 
+# 工程里的模板是建工程时拷的；技能升级后旧工程不会自己变。--update-template 换成技能里最新的（工程里自己写的件会被覆盖）
+if [ "${2:-}" = "--update-template" ]; then cp "$SKILL/template/"{index.html,palette.js,film.js,scenes.js} "$P/"; echo "模板已换成技能里最新的"; set -- "$1"; fi
+for f in index.html palette.js film.js scenes.js; do
+  cmp -s "$SKILL/template/$f" "$P/$f" || { echo "提醒：$P/$f 和技能里的模板不一样（技能升级过，或者你改过）。要换成最新的：bash $SKILL/scripts/build.sh $P --update-template"; break; }
+done
 BRIEF=""; [ -f "$P/brief.json" ] && BRIEF="$P/brief.json"
 echo "== 1/5 检查 film.json"
 $PY "$SKILL/scripts/check_film.py" "$P/film.json" $BRIEF
-if [ "${2:-}" = "--sheet-only" ]; then $PY "$SKILL/engine/render.py" "$P" --sheet 16; exit 0; fi
+TIMES="$(python3 "$SKILL/scripts/sheet_times.py" "$P/film.json")"   # 每句播到一半的那一帧，不截在换句的瞬间
+if [ "${2:-}" = "--sheet-only" ]; then $PY "$SKILL/engine/render.py" "$P" --sheet $TIMES; exit 0; fi
 
 echo "== 2/5 配乐（按片子结构合成，卡在小节线上）"
 mkdir -p "$P/scripts" "$P/public"
@@ -37,6 +43,6 @@ ffmpeg -v error -y -i "$P/renders/raw.mp4" -i "$P/public/score.wav" \
 ffmpeg -hide_banner -i "$OUT" -af ebur128=peak=true -f null - 2>&1 | grep -E "^\s+(I|Peak):" | tr -s ' ' | sed 's/^/   /'
 
 echo "== 5/5 拼图自查 → $P/review/sheet.jpg"
-$PY "$SKILL/engine/render.py" "$P" --sheet 16
+$PY "$SKILL/engine/render.py" "$P" --sheet $TIMES
 echo "成片：$OUT"
 echo "发布时记得打开平台的「AI 生成内容」声明。"

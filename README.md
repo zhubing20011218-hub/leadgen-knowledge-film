@@ -25,23 +25,30 @@ AI 不写画面代码，只写一份 `film.json`：字幕，加上每一镜用�
 
 ## 安装
 
+主要适配 **DeepSeek Harness**，Claude Code、Codex 等支持 skill 的助手也能用：
+
 ```bash
+# DeepSeek Harness
+git clone https://github.com/zhubing20011218-hub/leadgen-knowledge-film ~/.dsh/skills/leadgen-knowledge-film
+# Claude Code（其他助手放进它自己的 skills 目录）
 git clone https://github.com/zhubing20011218-hub/leadgen-knowledge-film ~/.claude/skills/leadgen-knowledge-film
-python3 -m pip install playwright pillow      # 渲染用本机的 Chrome
-python3 ~/.claude/skills/leadgen-knowledge-film/engine/get_fonts.py   # 下载开源字体（约 40MB）
+
+bash ~/.dsh/skills/leadgen-knowledge-film/scripts/setup.sh      # 建 .venv、装 playwright + pillow、下载开源字体（约 40MB）
 ```
 
-还需要 node 和 ffmpeg。然后在 AI 助手里说"做一条引流的知识短片"，它会先问你需求。
+还需要 node 和 ffmpeg。然后在助手里说"做一条引流的知识短片"，它会先问你需求；
+助手能看图（DeepSeek Harness 的 `read_image`、Claude 的 `Read`）就自己看拼图改，不额外花钱。
 
-手动跑示例：
+## 不开助手，直接用 DeepSeek 接口全自动
 
 ```bash
-S=~/.claude/skills/leadgen-knowledge-film
-bash $S/scripts/new_film.sh ~/Desktop/film-demo
-cp $S/examples/01-被裁之后/film.json ~/Desktop/film-demo/
-bash $S/scripts/build.sh ~/Desktop/film-demo --sheet-only   # 先出拼图看画面（约 20 秒）
-bash $S/scripts/build.sh ~/Desktop/film-demo                # 出整片（30 秒片约 7 分钟）
+S=~/.dsh/skills/leadgen-knowledge-film
+echo "DEEPSEEK_API_KEY=你的钥匙" > $S/.env && chmod 600 $S/.env     # .env 不会进 git
+mkdir -p ~/Desktop/film-demo && cp $S/examples/01-被裁之后/brief.json ~/Desktop/film-demo/
+python3 $S/scripts/ds_make.py ~/Desktop/film-demo            # 写 → 检查 → 看图评审 → 改；加 --render 连整片一起出
 ```
+
+实测（deepseek-flash，空闲时段）：30 秒一条约 ¥0.03，60 秒约 ¥0.05；工作日白天高峰翻倍。每条默认最多花 ¥0.5，账在 `review/cost.json`。
 
 ## 目录
 

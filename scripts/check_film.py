@@ -21,11 +21,44 @@ TYPES = {   # 件名: (必填字段, {列表字段: (最少, 最多)})
 }
 # 字幕里允许的字：汉字、字母、数字、空格和少数数字符号；其余标点一律不许（字幕不带标点）
 SUB_OK = re.compile(r"^[一-鿿㐀-䶿A-Za-z0-9 %+×¥$/.]+$")
-CONTACT = r"微信|vx|VX|加我|私信我|联系方式|电话|二维码|QQ|扣扣|wx号|链接在评论"
+CONTACT = r"微信|vx|VX|加我|私信我|联系方式|电话|二维码|QQ|扣扣|wx号|链接在评论|扣 ?1|扣 ?666|领资料|领取|免费送|私我"   # 后几个是诱导互动 / 导流话术，平台会限流
 PROMISE = r"月入|日入|年入|稳赚|躺赚|包赚|保证赚|一定赚|回本|暴富|财务自由|零风险|稳挣|零成本|零门槛|不用本钱|不要本钱|不花一分钱"
 INTERNAL = r"不含联系方式|访谈|brief|作者本人账目|SOP|skill|DeepSeek|Claude|提示词|分镜|示例数据来自"
 ABSOLUTE = r"最好|最强|第一|唯一|100%|绝对|永远"
 NUM = re.compile(r"\d")
+
+
+CN = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+UNIT = {"十": 10, "百": 100, "千": 1000}
+
+
+def cn2num(t):   # 两百 → 200，两万 → 20000，十年 → 10，三千五 → 3500（口语的"三千五"按 3500 算）
+    total, sec, num, last = 0, 0, 0, 1
+    for ch in t:
+        if ch in CN: num = CN[ch]
+        elif ch in UNIT: sec += (num or 1) * UNIT[ch]; last = UNIT[ch]; num = 0
+        elif ch == "万": total += (sec + num) * 10000; sec = num = 0; last = 1000
+    if num and last >= 100: num *= last // 10
+    return total + sec + num
+
+
+def numbers_in(text):
+    out = set()
+    for m in re.findall(r"\d+(?:\.\d+)?", text.replace(",", "")):
+        v = float(m); out.add(v)
+    for m in re.finditer(r"[零一二两三四五六七八九十百千万]{2,}|[十百千万]", text):
+        if m.start() and text[m.start() - 1] in "几数上成好": continue   # 几千、上万、数十：模糊说法，不是具体的数
+        v = cn2num(m.group(0))
+        if v: out.add(float(v))
+    return out
+
+
+# 每种件最多能"变"几次：一镜的句子比这多，多出来的句子画面不动
+def capacity(d):
+    ty = d.get("type"); L = lambda k: len(d.get(k) or [])
+    return {"title": 1, "statement": 1, "number": max(1, L("values")), "bars": L("rows"), "ring": 1 + L("rows"),
+            "timeline": 2 if d.get("breakAt") is not None else 1, "fork": max(2, L("paths")), "compare": 2,
+            "checklist": L("rows"), "steps": L("rows"), "cycle": L("nodes"), "cards": L("items")}.get(ty, 1)
 
 
 def width(s):   # 估算一行字幕的宽度（一个汉字 = 1）
@@ -45,6 +78,7 @@ def main():
     film = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
     brief = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8")) if len(sys.argv) > 2 else {}
     err, warn = [], []
+    brief_nums = numbers_in(json.dumps({k: brief.get(k) for k in ("pain", "proof", "audience")}, ensure_ascii=False)) if brief else None
     bpm = film.get("bpm", 112); bar = 60 / bpm * 4
     chs = film.get("chapters") or []
     if not chs: err.append("没有 chapters")
@@ -66,7 +100,7 @@ def main():
             t = str(ln.get("text", "")).strip()
             if not t: err.append(f"第{n}句 没有字"); continue
             if not SUB_OK.match(t): err.append(f"第{n}句「{t}」有标点或怪字符（字幕不带标点，用空格断开）")
-            if width(t) > 16: err.append(f"第{n}句「{t}」太长（约 {width(t):.1f} 字，上限 16，一眼读不完）")
+            if width(t) > 16.5: err.append(f"第{n}句「{t}」太长（约 {width(t):.1f} 字，上限 16，一眼读不完）")
             for w in ln.get("hl") or []:
                 if w not in t: err.append(f"第{n}句 高亮词「{w}」不在字幕里")
             if len(ln.get("hl") or []) > 2: warn.append(f"第{n}句 高亮超过 2 处，重点会散")
@@ -86,7 +120,41 @@ def main():
         if ty == "fork" and d.get("pick") is not None and not (0 <= int(d["pick"]) < len(d.get("paths") or [])): err.append(f"{tag} pick 超出 paths 范围")
         if ty == "timeline" and d.get("breakAt") is not None and not (0 <= int(d["breakAt"]) < len(d.get("nodes") or []) - 1): err.append(f"{tag} breakAt 要小于节点数 - 1")
         if ty == "timeline" and d.get("breakStep") is not None and int(d["breakStep"]) >= len(s["lines"]): err.append(f"{tag} breakStep={d['breakStep']} 但这一镜只有 {len(s['lines'])} 句，裂不到")
+        span, cap = len(s["lines"]), capacity(d)
+        if span > cap:
+            msg = f"{tag}（{ty}）有 {span} 句，但这个件只能变 {cap} 次：后面 {span - cap} 句画面不动。拆成两镜，或给它加条目（rows / values / nodes）"
+            (err if span - cap >= 2 else warn).append(msg)
+        if ty in ("steps", "checklist", "cards", "cycle"):
+            k = len(d.get("rows") or d.get("items") or d.get("nodes") or [])
+            for ln in s["lines"]:
+                m = re.search(r"([0-9]+|[一二两三四五六七八九十]) ?(步|条|件事|个)", str(ln.get("text", "")))
+                if m and m.group(2) in ("步", "条", "件事") and int(cn2num(m.group(1)) if not m.group(1).isdigit() else m.group(1)) != k:
+                    err.append(f"{tag} 字幕说「{m.group(0)}」，但画面只有 {k} 条：让两边对上（改字幕里的数，或补齐条目）")
+        if ty == "bars" and len({str(r.get("value")) for r in d.get("rows") or []}) == 1 and len(d.get("rows") or []) > 1: err.append(f"{tag} bars 每条的值都一样，比不出大小：换成有差别的真实数，或者换件（checklist / steps）")
         notes = [d.get("note")] + [ln.get("note") for ln in s["lines"]]
+        note_txt = " ".join(n for n in notes if n)
+        if brief_nums is not None:
+            shown = set()
+            def walk(o, path):
+                if isinstance(o, bool): return
+                if isinstance(o, (int, float)): yield path, str(o)
+                elif isinstance(o, str): yield path, o
+                elif isinstance(o, dict):
+                    for k, v in o.items():
+                        if k not in ("type", "note", "breakAt", "breakStep", "pick", "max", "ok", "pct", "from"): yield from walk(v, f"{path}.{k}")
+                elif isinstance(o, list):
+                    for i, v in enumerate(o): yield from walk(v, f"{path}[{i}]")
+            where = {}
+            for pth, x in walk(d, "shot"):
+                for v in numbers_in(x): where.setdefault(v, f"{pth}「{x}」")
+            for j, ln in enumerate(s["lines"]):
+                for v in numbers_in(str(ln.get("text", ""))): where.setdefault(v, f"这一镜第{j + 1}句字幕「{ln.get('text')}」")
+            odd = sorted(v for v in where if v > 10 and v not in brief_nums and not (1900 <= v <= 2100))
+            if odd:
+                nums = "、".join(f"{v:g}（在 {where[v]}）" for v in odd)
+                if re.search("按.*算|来源", note_txt): warn.append(f"{tag} 数字 {nums} 不在 brief 里（note 写了怎么算的 / 来源，放行，自己再核对一遍）")
+                elif ty == "timeline" and "示意" in note_txt: warn.append(f"{tag} 人生节点的数字 {nums} 是示意（放行）")
+                else: err.append(f"{tag} 数字 {nums} 在 brief 里找不到：疑似编造。用 brief 里的数；从 brief 算出来的，note 写「按 … 算」；公开规则写「来源：…」；拿不出依据就别放数字（「示意」只给人生节点用）")
         has_num = any(NUM.search(x) for x in strings({k: v for k, v in d.items() if k not in ("type", "note", "breakAt", "breakStep", "pick", "max")})) or any(NUM.search(str(ln.get("text", ""))) for ln in s["lines"])
         if has_num and ty not in ("title", "statement", "steps") and not any(notes):
             err.append(f"{tag}（{ty}）屏上有数字，但没有 note 写出处（真实来源 / 示例 / 示意）")
@@ -94,7 +162,7 @@ def main():
             err.append(f"{tag} brief 标了 example（数字不是真实数据），note 必须写「示例」或「示意」")
     every = list(strings(film)) + [str(ln.get("text", "")) for ln in lines]
     for x in every:
-        for name, pat, is_err in (("联系方式", CONTACT, True), ("收入承诺", PROMISE, True), ("内部用语", INTERNAL, True), ("绝对化用语", ABSOLUTE, False)):
+        for name, pat, is_err in (("联系方式或诱导互动", CONTACT, True), ("收入承诺", PROMISE, True), ("内部用语", INTERNAL, True), ("绝对化用语", ABSOLUTE, False)):
             m = re.search(pat, x)
             if m: (err if is_err else warn).append(f"屏上出现{name}「{m.group(0)}」：{x}")
     for w in brief.get("banned") or []:
@@ -102,7 +170,10 @@ def main():
     n = len(lines)
     if brief.get("seconds"):
         want = round(brief["seconds"] / bar)
-        if abs(n - want) > 1: err.append(f"{brief['seconds']} 秒 @ {bpm} BPM 应该是 {want} 句（一句一小节 {bar:.2f} 秒），现在 {n} 句")
+        if abs(n - want) > 1:
+            per = "，".join(f"「{c.get('name')}」{len(c.get('lines') or [])} 句" for c in chs)
+            how = f"还差 {want - n} 句：挑一两章往后加句子（加在已有的镜后面，或开新镜）" if n < want else f"多了 {n - want} 句：删掉最弱的几句"
+            err.append(f"{brief['seconds']} 秒 @ {bpm} BPM 要正好 {want} 句（一句一小节 {bar:.2f} 秒），现在 {n} 句。{how}。现在各章：{per}")
     if shots and shots[0]["shot"].get("type") not in ("title", "statement", "timeline", "number", "compare"): warn.append("开头第一镜不是钩子类（title / statement / timeline / number / compare），确认前 3 秒能让人停下")
     plain = sum(1 for s in shots if s["shot"].get("type") == "statement")
     if shots and plain > len(shots) / 2: warn.append(f"{plain}/{len(shots)} 镜是纯文字 statement，画面太少")

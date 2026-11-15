@@ -8,3 +8,4 @@ review/
 __pycache__/
 .DS_Store
 .env*
+.venv/

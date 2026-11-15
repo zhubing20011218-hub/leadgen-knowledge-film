@@ -17,6 +17,27 @@ description: >
 
 固定的是做事的步骤，不固定的是内容：讲什么、出路是哪条、用哪种结构，每条片都和用户商量着定。
 
+## 开工前：看清环境（一次）
+
+```bash
+python3 scripts/env_check.py      # 认出你在哪个助手里、依赖齐不齐、DeepSeek 钥匙有没有
+bash scripts/setup.sh             # 缺东西就跑一次：建 .venv、装 playwright + pillow、下字体
+```
+
+三种跑法，按环境选：
+
+| 你在 | 怎么做 |
+|---|---|
+| **DeepSeek Harness（主要适配）** | 你自己写 film.json（照第 2 节）→ `bash scripts/build.sh <工程> --sheet-only` → **用 `read_image` 打开 `<工程>/review/sheet.jpg` 自己看** → 改 → 出整片。看图不额外花钱 |
+| Claude Code / Codex / Cursor | 同上；看图用 Claude 的 `Read`、Codex 的 `view_image`。助手不能看图时：`python3 scripts/ds_make.py <工程> --review-only`，按它列出的问题改 |
+| 只有终端 / 想全自动 | `python3 scripts/ds_make.py <工程>`：DeepSeek 接口自动写 → 检查 → 看图评审 → 改，`--render` 连整片一起出 |
+
+`ds_make.py` 的账（实测，空闲时段）：30 秒一条约 ¥0.03，60 秒约 ¥0.05；高峰时段（工作日 9–12、14–18 点）翻倍。
+默认用 `deepseek-flash`；同样的错连续两轮改不掉，才自动换 `deepseek-v4-pro` 改一轮。每条片默认上限 ¥0.5（`--budget`），账记在 `<工程>/review/cost.json`。
+
+**弱模型最容易错的四件事，检查脚本都会拦**：句数数不清（会告诉你各章几句、差几句）、编 brief 里没有的数字（会指出是哪个字段）、
+一镜放了比件能演的更多的句子（画面不动）、照着评审意见加"扣1 领资料"这类诱导话术。报错写到哪个字段，就改哪个字段。
+
 ## 0. 先问需求（没拿到答案不开工）
 
 一次问完七件事（问法、追问、反例在 `references/01-需求访谈.md`）：
@@ -55,12 +76,12 @@ bash scripts/build.sh ~/Desktop/film-xxx --sheet-only      # 先只出 16 格拼
 bash scripts/build.sh ~/Desktop/film-xxx                   # 检查 → 配乐 → 渲染 → 混音 → 拼图（30 秒片约 6 分钟）
 ```
 
-`build.sh` 第一步跑 `check_film.py`，有错误（标点、太长、数字没出处、联系方式、收入承诺、内部用语上屏……）就停，改完再跑。
+`build.sh` 第一步跑 `check_film.py`，有错误（标点、太长、数字没出处或 brief 里找不到、联系方式和诱导话术、收入承诺、内部用语上屏、句数不对……）就停，改完再跑。
+拼图截的是每句播到一半的那一帧（`scripts/sheet_times.py`），不会截在换句的瞬间。
 配乐由 `make_cues.mjs` 按片子结构自动合成（每章换和弦、反转前撤鼓、每句一声 tick），卡在小节线上，没有版权问题；
 用户有自己的配乐见 `references/04-配乐与卡点.md`。成片在 `<工程>/renders/<片名>.mp4`，−14 LUFS，文件里写入不可见的 AI 生成标记。
 
-第一次用要装：Python 的 `playwright` + `pillow`、node、ffmpeg、本机 Chrome；字体由 `engine/get_fonts.py` 自动下载（约 40MB）。
-Python 不是默认那个，用 `PYTHON=<路径> bash scripts/build.sh …`。
+第一次用跑 `bash scripts/setup.sh`（建技能自己的 `.venv`、装依赖、下字体约 40MB；没有 Chrome 会下 Chromium）。还要 node 和 ffmpeg。
 
 ## 4. 自己先看，再交
 
@@ -94,6 +115,6 @@ references/05-检查表.md           机器检查 + 人看三条 + 交付清单
 references/06-合规红线.md         平台和法律边界、可替换的说法
 template/                        画面模板：film.js（播放器）scenes.js（12 个件）palette.js（章节色）
 engine/                          渲染引擎（MIT，来源见 LICENSE-THIRD-PARTY.md）；字体下载到 engine/fonts/
-scripts/                         new_film.sh / build.sh / check_film.py / validate_brief.py / make_cues.mjs / score.mjs
+scripts/                         env_check.py / setup.sh / new_film.sh / build.sh / ds_make.py（DeepSeek 全自动）/ check_film.py / validate_brief.py / sheet_times.py / make_cues.mjs / score.mjs
 examples/01-被裁之后/             示例：brief.json（数字是示例）+ film.json
 ```

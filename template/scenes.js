@@ -11,10 +11,12 @@
 const { W, H, clamp, lerp, seg, ss, fade, E, hash, rgba, mix } = VK;
 const CX = W / 2, X0 = 96, XR = W - 96, CW = XR - X0;
 
-/* 第 i 个（共 n 个）东西什么时候出场：一句一个；比句子多的，挤在最后一句里按拍子出 */
+/* 第 i 个（共 n 个）东西什么时候出场：一句一个；比句子多的，挤在最后一句的前 55% 里出完
+ * （按拍子出，太多就再密一点）——这样这句播到一半多一点时，所有条目都已经站稳了 */
 function at(c, i, n) {
   if (n <= c.span || i < c.span - 1) return i * c.bar;
-  return (c.span - 1) * c.bar + (i - (c.span - 1)) * c.beat;
+  const k = n - (c.span - 1), step = Math.min(c.beat, (c.bar * 0.55) / Math.max(k - 1, 1));
+  return (c.span - 1) * c.bar + (i - (c.span - 1)) * step;
 }
 /* 到现在为止出场的最后一个是第几个 */
 function current(c, n) { let k = -1; for (let i = 0; i < n; i++) if (c.lt >= at(c, i, n) - 0.001) k = i; return k; }
@@ -78,21 +80,21 @@ const SCENES = {
     const k = E.out3(seg(c.lt, ti, ti + (i === 0 && d.from == null ? 0.05 : packed ? 0.4 : 0.7)));
     const v = lerp(prev, vals[i], k), Y = 720;
     const str = fmt(v, dec), u = (d.units && d.units[i]) || d.unit || '';
-    const groupW = sz => (d.prefix ? fr.measure(d.prefix, { font: 'sansh', size: sz * 0.45 }) + 14 : 0) + fr.measure(fmt(vals[i], dec) + (d.suffix || ''), { font: 'sansh', size: sz, track: -4 }) + (u ? 16 + fr.measure(u, { font: 'sansm', size: 36 }) : 0);
+    const groupW = sz => (d.prefix ? fr.measure(d.prefix, { font: 'sansh', size: sz * 0.45 }) + 14 : 0) + fr.measure(fmt(vals[i], dec) + (d.suffix || ''), { font: 'sansh', size: sz, track: -4 }) + (u ? 18 + fr.measure(u, { font: 'sansh', size: 46 }) : 0);
     let size = 300; while (size > 60 && groupW(size) > CW - 20) size -= 6;
     if (i > 0) fr.text((d.prefix || '') + fmt(prev, dec) + (d.suffix || ''), CX + 30, Y - 40, { font: 'sansh', size, track: -4, color: c.alt, a: 0.18 * (1 - 0.5 * k), blur: 3 });
     const ent = E.out3(seg(c.lt, 0, 0.35));
     fr.g({ at: [CX, Y], s: lerp(0.86, 1, ent) * (1 + 0.04 * (1 - seg(c.lt, ti, ti + 0.25)) * (i > 0 ? 1 : 0)) }, () => {
       const pw = d.prefix ? fr.measure(d.prefix, { font: 'sansh', size: size * 0.45 }) + 14 : 0;
-      const nw = fr.measure(str + (d.suffix || ''), { font: 'sansh', size, track: -4 }), uw = u ? 16 + fr.measure(u, { font: 'sansm', size: 36 }) : 0, x0 = -(pw + nw + uw) / 2;
+      const nw = fr.measure(str + (d.suffix || ''), { font: 'sansh', size, track: -4 }), uw = u ? 18 + fr.measure(u, { font: 'sansh', size: 46 }) : 0, x0 = -(pw + nw + uw) / 2;
       if (d.prefix) fr.text(d.prefix, x0, -size * 0.12, { font: 'sansh', size: size * 0.45, color: c.col, align: 'l', a: ent, glow: 20 });
       fr.text(str + (d.suffix || ''), x0 + pw, 0, { font: 'sansh', size, track: -4, align: 'l', a: ent, grad: [[0, '#FFFFFF'], [1, mix('#FFFFFF', c.col, 0.45)]], glow: 34, glowColor: c.col, glowA: 0.5 });
-      if (u) fr.text(u, x0 + pw + nw + 16, size * 0.22, { font: 'sansm', size: 36, color: INK.dim, align: 'l', a: ent });
+      if (u) fr.text(u, x0 + pw + nw + 18, size * 0.22, { font: 'sansh', size: 46, color: INK.text, align: 'l', a: ent });
     });
     if (d.bar) {
       const b = d.bar, by = 1080, kb = E.out3(seg(c.lt, 0.3, 1.1));
-      fr.text(b.label || '', X0, by - 46, { font: 'sans', size: 32, track: 2, color: INK.text, align: 'l', a: kb });
-      if (b.tag) fr.text(b.tag, XR, by - 46, { font: 'sansh', size: 34, color: NEON.green.main, align: 'r', a: kb, glow: 12 });
+      fr.text(b.label || '', X0, by - 50, { font: 'sansh', size: 40, track: 2, color: INK.text, align: 'l', a: kb });
+      if (b.tag) fr.text(b.tag, XR, by - 50, { font: 'sansh', size: 40, color: NEON.green.main, align: 'r', a: kb, glow: 12 });
       card(fr, X0, by, CW, 66, c.col, { a: kb, r: 12, edge: 0.3 });
       const p = clamp(Number(b.pct || 0) / 100) * kb;
       fr.rect(X0 + 8, by + 8, (CW - 16) * p, 50, { r: 8, fill: c.col, fa: 0.85, glow: 18 });
@@ -107,12 +109,12 @@ const SCENES = {
     rows.forEach((r, i) => {
       const a0 = at(c, i, n), k = E.out3(seg(c.lt, a0, a0 + 0.45)); if (k <= 0) return;
       const y = y0 + i * gap, hot = i === cur, dim = hot ? 1 : 0.5;
-      fr.text(r.label, X0, y, { font: 'sansh', size: 40, color: INK.white, align: 'l', a: k * dim });
+      fr.text(r.label, X0, y, { font: 'sansh', size: 46, color: INK.white, align: 'l', a: k * dim });
       const val = (Number(r.value) || 0) * E.out3(seg(c.lt, a0 + 0.1, a0 + 0.8));
       fr.text(fmt(val, decimalsOf([r.value])) + (d.unit || ''), XR, y, { font: 'sansh', size: 46, color: hot ? c.col : INK.text, align: 'r', a: k, glow: hot ? 18 : 0 });
       fr.rect(X0, y + 46, CW, 16, { r: 8, fill: '#FFFFFF', fa: 0.07 * k });
       fr.rect(X0, y + 46, CW * clamp(val / max), 16, { r: 8, fill: hot ? c.col : mix(c.col, '#444', 0.5), fa: k, glow: hot ? 16 : 0 });
-      if (r.tag) fr.text(r.tag, X0, y + 96, { font: 'sansr', size: 26, color: INK.dim, align: 'l', a: k * dim });
+      if (r.tag) fr.text(r.tag, X0, y + 98, { font: 'sans', size: 30, color: INK.dim, align: 'l', a: k * dim });
     });
   },
 
@@ -198,18 +200,18 @@ const SCENES = {
     const tr = c.span > 1 ? c.bar : c.beat * 2;
     const k1 = E.out3(seg(c.lt, 0, 0.4)), ka = E.out3(seg(c.lt, tr, tr + 0.5)), k2 = E.out3(seg(c.lt, tr + 0.25, tr + 0.7)), kb = E.out5(seg(c.lt, tr + 0.6, tr + 1.0));
     card(fr, X0, y, CW, h, c.col, { a: k1, edge: 0.35 });
-    fr.text(L.label || '', X0 + 50, y + 80, { font: 'sans', size: 32, track: 3, color: INK.dim, align: 'l', a: k1 });
+    fr.text(L.label || '', X0 + 50, y + 80, { font: 'sansh', size: 40, track: 3, color: INK.text, align: 'l', a: k1 });
     const ls = fit(fr, String(L.value), 'sansh', 110, CW * 0.4);
     fr.text(String(L.value || ''), X0 + 50, y + 190, { font: 'sansh', size: ls, color: INK.white, align: 'l', a: k1 });
-    if (L.sub) fr.text(L.sub, X0 + 50, y + 280, { font: 'sansr', size: 28, color: INK.dim, align: 'l', a: k1 });
+    if (L.sub) fr.text(L.sub, X0 + 50, y + 280, { font: 'sans', size: 32, color: INK.dim, align: 'l', a: k1 });
     const ax0 = X0 + 60, ax1 = XR - 60, ay = y + 360;
     fr.line(ax0, ay, lerp(ax0, ax1, ka), ay, { color: c.col, w: 3, a: 0.9, glow: 12 });
     if (ka > 0 && ka < 1) fr.spark(lerp(ax0, ax1, ka), ay, 7, c.col, 1);
     if (ka >= 1) fr.poly([[ax1 - 18, ay - 12], [ax1, ay], [ax1 - 18, ay + 12]], { color: c.col, w: 3, glow: 10 });
-    fr.text(R.label || '', XR - 50, y + 80, { font: 'sans', size: 32, track: 3, color: INK.dim, align: 'r', a: k2 });
+    fr.text(R.label || '', XR - 50, y + 80, { font: 'sansh', size: 40, track: 3, color: INK.text, align: 'r', a: k2 });
     const rs = fit(fr, String(R.value), 'sansh', 130, CW * 0.45);
     fr.text(String(R.value || ''), XR - 50, y + 190 + (1 - k2) * 20, { font: 'sansh', size: rs, color: c.col, align: 'r', a: k2, glow: 30 });
-    if (R.sub) fr.text(R.sub, XR - 50, y + 280, { font: 'sansr', size: 28, color: INK.dim, align: 'r', a: k2 });
+    if (R.sub) fr.text(R.sub, XR - 50, y + 280, { font: 'sans', size: 32, color: INK.dim, align: 'r', a: k2 });
     if (d.badge && kb > 0) fr.g({ at: [CX, y + h + 120], s: lerp(1.3, 1, kb) }, () => {
       card(fr, -170, -70, 340, 140, NEON.green.main, { a: kb, edge: 0.9, glow: 20, r: 18 });
       fr.text(d.badge.label || '', 0, -28, { font: 'sans', size: 28, color: NEON.green.alt, a: kb });
@@ -220,18 +222,21 @@ const SCENES = {
   /* 打勾清单：{title?, rows:[{text, ok?:true|false, note?}]} —— 一句勾一条；ok:false 画一道横线、发灰 */
   checklist(fr, c) {
     const d = c.d, rows = d.rows || [], n = rows.length, cur = current(c, n);
-    const gap = Math.min(150, 760 / Math.max(n, 1)), y0 = 560 + (760 - gap * n) / 2;
-    if (d.title) fr.text(d.title, X0, y0 - 90, { font: 'sansh', size: 44, color: INK.text, align: 'l', a: E.out3(seg(c.lt, 0, 0.3)) });
+    const big = n <= 3, fs = big ? 60 : 46, bx = big ? 88 : 68;   // 条目少就放大，别让画面空着
+    const gap = Math.min(big ? 200 : 150, 760 / Math.max(n, 1)), y0 = 600 + (760 - gap * n) / 2;
+    if (d.title) fr.text(d.title, X0, y0 - (big ? 130 : 90), { font: 'sansh', size: big ? 54 : 44, color: INK.text, align: 'l', a: E.out3(seg(c.lt, 0, 0.3)) });
     rows.forEach((r, i) => {
       const a0 = at(c, i, n), k = E.out3(seg(c.lt, a0, a0 + 0.35)); if (k <= 0) return;
       const y = y0 + i * gap, ok = r.ok !== false, hot = i === cur, kt = E.out3(seg(c.lt, a0 + 0.15, a0 + 0.5));
       const col = ok ? c.col : '#6A7088';
-      fr.rect(X0, y - 34, 68, 68, { r: 14, color: col, w: 3, a: k, glow: ok && hot ? 16 : 0, fill: INK.card, fa: 0.7 * k });
-      if (ok) fr.poly([[X0 + 16, y + 2], [X0 + 30, y + 18], [X0 + 54, y - 16]], { color: col, w: 6, k: kt, glow: 14 });
-      else fr.line(X0 + 18, y, X0 + 18 + 32 * kt, y, { color: col, w: 6 });
-      fr.text(r.text, X0 + 100, y, { font: 'sansh', size: 46, color: ok ? (hot ? INK.white : INK.text) : '#6A7088', align: 'l', a: k });
-      if (!ok) fr.line(X0 + 96, y, X0 + 104 + fr.measure(r.text, { font: 'sansh', size: 46 }) * kt, y, { color: '#6A7088', w: 3, a: k });
-      if (r.note) fr.text(r.note, XR, y, { font: 'sans', size: 30, color: ok ? c.col : '#6A7088', align: 'r', a: k * (hot ? 1 : 0.7) });
+      const q = bx / 68;
+      fr.rect(X0, y - bx / 2, bx, bx, { r: 14 * q, color: col, w: 3, a: k, glow: ok && hot ? 16 : 0, fill: INK.card, fa: 0.7 * k });
+      if (ok) fr.poly([[X0 + 16 * q, y + 2 * q], [X0 + 30 * q, y + 18 * q], [X0 + 54 * q, y - 16 * q]], { color: col, w: 6 * q, k: kt, glow: 14 });
+      else fr.line(X0 + 18 * q, y, X0 + (18 + 32 * kt) * q, y, { color: col, w: 6 * q });
+      const tx = X0 + bx + 32, ts = Math.min(fs, fit(fr, r.text, 'sansh', fs, XR - tx - (r.note ? 200 : 0)));
+      fr.text(r.text, tx, y, { font: 'sansh', size: ts, color: ok ? (hot ? INK.white : INK.text) : '#6A7088', align: 'l', a: k });
+      if (!ok) fr.line(tx - 4, y, tx + 4 + fr.measure(r.text, { font: 'sansh', size: ts }) * kt, y, { color: '#6A7088', w: 3, a: k });
+      if (r.note) fr.text(r.note, XR, y, { font: 'sansh', size: big ? 38 : 30, color: ok ? c.col : '#6A7088', align: 'r', a: k * (hot ? 1 : 0.7) });
     });
   },
 

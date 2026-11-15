@@ -41,7 +41,9 @@ def serve(proj, port=0):
 
 def open_page(p, url):
     # 关掉 LCD 次像素抗锯齿（跳着 seek 字边不抖）；每帧等合成器跑完再截；固定 sRGB
-    b = p.chromium.launch(channel="chrome", args=["--disable-lcd-text", "--run-all-compositor-stages-before-draw", "--force-color-profile=srgb"])
+    args = ["--disable-lcd-text", "--run-all-compositor-stages-before-draw", "--force-color-profile=srgb"]
+    try: b = p.chromium.launch(channel="chrome", args=args)            # 优先用本机 Chrome
+    except Exception: b = p.chromium.launch(args=args)                 # 没装 Chrome：用 playwright 自带的 Chromium
     pg = b.new_page(viewport={"width": 1080, "height": 1920}, device_scale_factor=1)
     pg.on("console", lambda m: m.type in ("error", "warning") and print("[page]", m.text))
     pg.on("pageerror", lambda e: print("[pageerror]", e))
