@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 一条命令出片：检查 → 配乐 → 渲画面 → 混音（-14 LUFS）→ 写入 AI 生成标记 → 拼图自查
-#   bash scripts/build.sh <工程目录> [--sheet-only]
+#   bash scripts/build.sh <工程目录> [--sheet-only 只出拼图 | --remix 只重新配乐混音、不重渲画面]
 # 需要：python3（装了 playwright 和 pillow）、node、ffmpeg、本机 Chrome。缺什么会直接告诉你。
 set -euo pipefail
 SKILL="$(cd "$(dirname "$0")/.." && pwd)"
@@ -23,14 +23,16 @@ node "$SKILL/scripts/make_cues.mjs" "$P/film.json" > "$P/scripts/cues.json"
 node "$P/scripts/score.mjs" "$P/scripts/cues.json"
 
 echo "== 3/5 渲画面"
-$PY "$SKILL/engine/render.py" "$P" --jobs 4
+if [ "${2:-}" = "--remix" ] && [ -f "$P/renders/raw.mp4" ]; then echo "沿用 renders/raw.mp4"; else $PY "$SKILL/engine/render.py" "$P" --jobs 4; fi
 
 echo "== 4/5 混音到 -14 LUFS、真峰 ≤ -1 dBTP，写入 AI 生成标记"
-M=$(ffmpeg -hide_banner -i "$P/public/score.wav" -af loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json -f null - 2>&1 | $PY -c "import sys,json,re; s=sys.stdin.read(); d=json.loads(re.findall(r'\{[^{}]*\}', s)[-1]); print(f\"measured_I={d['input_i']}:measured_TP={d['input_tp']}:measured_LRA={d['input_lra']}:measured_thresh={d['input_thresh']}:offset={d['target_offset']}\")")
+[ "${2:-}" = "--remix" ] && echo "（只重新混音，不重渲画面）"
+# 合成鼓点峰值很尖：先压峰值，再提到 -14 LUFS，最后留 1 dB 给 AAC 编码的过冲（11-15 实测：只做 loudnorm 真峰会到 0 dB）
+MIX="alimiter=limit=0.4:level=false:attack=1:release=60,loudnorm=I=-14:TP=-2:LRA=11,alimiter=limit=0.79:level=false:attack=1:release=60,aresample=48000"
 NAME="$($PY -c "import json,sys; print(json.load(open(sys.argv[1],encoding='utf-8')).get('title') or 'film')" "$P/film.json")"
 OUT="$P/renders/${NAME}.mp4"
 ffmpeg -v error -y -i "$P/renders/raw.mp4" -i "$P/public/score.wav" \
-  -af "loudnorm=I=-14:TP=-1.5:LRA=11:$M:linear=true,aresample=48000,alimiter=limit=0.84:level=false" -c:v copy -c:a aac -b:a 192k -shortest \
+  -af "$MIX" -c:v copy -c:a aac -b:a 192k -shortest \
   -metadata comment="AIGC: 本视频由 AI 辅助生成" -metadata description="AI-generated content" -movflags +faststart "$OUT"
 ffmpeg -hide_banner -i "$OUT" -af ebur128=peak=true -f null - 2>&1 | grep -E "^\s+(I|Peak):" | tr -s ' ' | sed 's/^/   /'
 
