@@ -1,0 +1,296 @@
+{
+ "title": "被裁之后",
+ "bpm": 112,
+ "chapters": [
+  {
+   "name": "人生",
+   "en": "LIFE PLAN",
+   "color": "violet",
+   "lines": [
+    {
+     "text": "我们都被教过同一条路",
+     "hl": [
+      "同一条路"
+     ],
+     "shot": {
+      "type": "timeline",
+      "nodes": [
+       {
+        "label": "毕业",
+        "sub": "22"
+       },
+       {
+        "label": "入职",
+        "sub": "24"
+       },
+       {
+        "label": "结婚",
+        "sub": "30"
+       },
+       {
+        "label": "房贷",
+        "sub": "35"
+       }
+      ],
+      "breakAt": 2,
+      "breakStep": 2
+     },
+     "note": "人生节点为示意"
+    },
+    {
+     "text": "读书 上班 结婚 还贷",
+     "hl": [
+      "还贷"
+     ]
+    },
+    {
+     "text": "没人说这条路中间会断",
+     "hl": [
+      "会断"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "断裂",
+   "en": "THE BREAK",
+   "color": "red",
+   "lines": [
+    {
+     "text": "38 岁这年 厂子搬去了越南",
+     "hl": [
+      "搬去了越南"
+     ],
+     "shot": {
+      "type": "title",
+      "kicker": "LAID OFF",
+      "top": "38 岁这年",
+      "big": "被裁之后",
+      "bottom": "一条能走的路"
+     },
+     "note": "人物经历为示例"
+    },
+    {
+     "text": "十年工厂管理 一夜清零",
+     "hl": [
+      "一夜清零"
+     ]
+    },
+    {
+     "text": "两百份简历 没有回音",
+     "hl": [
+      "没有回音"
+     ],
+     "shot": {
+      "type": "number",
+      "values": [
+       200,
+       0
+      ],
+      "suffix": "份",
+      "units": [
+       "投出去",
+       "有回音"
+      ],
+      "from": 0
+     },
+     "note": "示例"
+    }
+   ]
+  },
+  {
+   "name": "分叉",
+   "en": "THE FORK",
+   "color": "amber",
+   "lines": [
+    {
+     "text": "摆在面前的 只有几条路",
+     "hl": [
+      "几条路"
+     ],
+     "shot": {
+      "type": "fork",
+      "paths": [
+       {
+        "label": "考公",
+        "sub": "35 岁前"
+       },
+       {
+        "label": "送外卖",
+        "sub": "立刻上手"
+       },
+       {
+        "label": "开个店",
+        "sub": "本钱十万"
+       }
+      ],
+      "pick": 2
+     },
+     "note": "门槛为示意"
+    },
+    {
+     "text": "考公 卡在 35 岁这条线",
+     "hl": [
+      "35 岁"
+     ]
+    },
+    {
+     "text": "送外卖 时薪换时间",
+     "hl": [
+      "时薪换时间"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "收窄",
+   "en": "THE SQUEEZE",
+   "color": "blue",
+   "lines": [
+    {
+     "text": "开店 房租和压货先要十万",
+     "hl": [
+      "十万"
+     ],
+     "shot": {
+      "type": "bars",
+      "rows": [
+       {
+        "label": "房租押金",
+        "value": 3
+       },
+       {
+        "label": "首批压货",
+        "value": 5
+       },
+       {
+        "label": "装修杂费",
+        "value": 2
+       }
+      ],
+      "unit": "万元",
+      "max": 10
+     },
+     "note": "示例"
+    },
+    {
+     "text": "不是没路 是门槛太高",
+     "hl": [
+      "门槛太高"
+     ],
+     "shot": {
+      "type": "statement",
+      "top": "真正卡住人的",
+      "big": "门槛",
+      "sub": "不是能力"
+     }
+    }
+   ]
+  },
+  {
+   "name": "出路",
+   "en": "THE WAY OUT",
+   "color": "green",
+   "turn": true,
+   "lines": [
+    {
+     "text": "跨境电商 起步只要一台电脑",
+     "hl": [
+      "一台电脑"
+     ],
+     "shot": {
+      "type": "checklist",
+      "title": "起步要什么",
+      "rows": [
+       {
+        "text": "一部手机 一台电脑",
+        "ok": true
+       },
+       {
+        "text": "不用学历 不囤货",
+        "ok": true
+       },
+       {
+        "text": "下班后就能做",
+        "ok": true
+       },
+       {
+        "text": "先囤一仓库货",
+        "ok": false
+       }
+      ]
+     }
+    },
+    {
+     "text": "AI 把选品 文案 做图都接了过去",
+     "hl": [
+      "AI"
+     ],
+     "shot": {
+      "type": "cycle",
+      "center": "AI",
+      "nodes": [
+       {
+        "label": "选品",
+        "sub": "看数据"
+       },
+       {
+        "label": "文案",
+        "sub": "写标题"
+       },
+       {
+        "label": "做图",
+        "sub": "出主图"
+       },
+       {
+        "label": "剪片",
+        "sub": "出素材"
+       }
+      ]
+     },
+     "note": "示意"
+    }
+   ]
+  },
+  {
+   "name": "行动",
+   "en": "NEXT STEP",
+   "color": "cyan",
+   "lines": [
+    {
+     "text": "难的不是没路 是没人告诉你门槛",
+     "hl": [
+      "门槛"
+     ],
+     "shot": {
+      "type": "steps",
+      "rows": [
+       {
+        "text": "先算清运费"
+       },
+       {
+        "text": "再选一个款"
+       },
+       {
+        "text": "小单试跑"
+       }
+      ]
+     },
+     "note": "示例"
+    },
+    {
+     "text": "这条路拆成几步 放在主页合集",
+     "hl": [
+      "主页合集"
+     ],
+     "shot": {
+      "type": "statement",
+      "top": "这条路怎么走",
+      "big": "主页合集",
+      "sub": "评论区聊"
+     }
+    }
+   ]
+  }
+ ]
+}

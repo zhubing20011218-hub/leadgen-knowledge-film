@@ -7,13 +7,15 @@
 退出码 0 = 可以进第 1 步；1 = 有错，按「怎么改」改完再交。
 
 brief.json 字段：
-  angle      laid-off | pivot-list | ai-ecommerce | own-mistake
+  angle      laid-off | pivot-list | ai-ecommerce | own-mistake | custom（用户自己定的结构）
+  outlet     出路：片子最后把观众引向哪个方向（默认「跨境电商」，也可以是用户自己的业务 / 一门技能）
   audience   给谁看（一句话，≤30 字）
   pain       处境三句（每条 ≤30 字，必须有具体年龄/岗位/事件）
-  proof      真实证据 2–4 条（每条 ≤40 字，至少 2 条带数字）
+  proof      证据 2–4 条（每条 ≤40 字，最好 2 条带数字；没有数字就讲流程和坑）
+  example    true = 这些数字是编的示例（只能用来试做，片上一律标「示例」，不能发布）
   cta        下一步（主页合集 / 评论区 / 收藏）
   seconds    30 | 60 | 90
-  mood       cold | tight | light
+  mood       steady（默认 112 BPM，和标杆样片同速）| tight（128，紧张）| calm（100，舒缓）
   banned     不出现的说法（数组，可空）
 """
 import json
@@ -25,9 +27,10 @@ ANGLES = {
     'pivot-list': ('B 转行盘点', '把 5 条路摊开比门槛', '公开规则 + 成本结构'),
     'ai-ecommerce': ('C 电商+AI', 'AI 复刻「互联网+」的路径', '自己用 AI 干的活'),
     'own-mistake': ('D 我的弯路', '我亏在哪 → 正确算法', '真实亏损数据'),
+    'custom': ('自定结构', '用户和我商量出来的结构', '按结构定'),
 }
-MOODS = {'cold': ('冷峻', 120), 'tight': ('紧张', 128), 'light': ('轻快', 112)}
-BARS = {30: [0, 3, 5, 8, 11, 13], 60: [0, 6, 10, 16, 22, 26], 90: [0, 9, 15, 24, 33, 39]}
+MOODS = {'steady': ('稳（默认）', 112), 'tight': ('紧张', 128), 'calm': ('舒缓', 100)}
+SECONDS = (30, 60, 90)
 
 BANNED_WORDS = (
     '微信', '加微', 'QQ', '私信发', '扫码', '手机号', '二维码',
@@ -71,15 +74,19 @@ def check(b):
         if len(p) > 40:
             errs.append(f'proof 第 {i} 条超过 40 字（现在 {len(p)} 字）')
     if sum(1 for p in proof if has_digit(p)) < 2:
-        errs.append('proof 至少 2 条要带数字（进价/运费/佣金/退货率/客单价都行）')
+        warns.append('proof 带数字的不到 2 条：这条片改讲流程和坑，不硬上百分比')
+    if not (b.get('outlet') or '').strip():
+        errs.append('outlet（出路）不能空：片子最后把观众引到哪个方向？默认填「跨境电商」')
+    if b.get('example'):
+        warns.append('example = true：数字是编的，只能试做；片上每个数字都要标「示例」，这条片不能发布')
 
     if not (b.get('cta') or '').strip():
         errs.append('cta（下一步）不能空：主页合集 / 评论区 / 收藏')
 
-    if b.get('seconds') not in BARS:
+    if b.get('seconds') not in SECONDS:
         errs.append('seconds 只能是 30 / 60 / 90')
     if b.get('mood') not in MOODS:
-        errs.append('mood 只能是 cold / tight / light')
+        errs.append('mood 只能是 steady / tight / calm')
 
     text = ' '.join([aud] + list(pain) + list(proof) + [str(b.get('cta', ''))])
     for w in BANNED_WORDS:
@@ -103,12 +110,11 @@ def plan(b):
     name, arc, need = ANGLES[b['angle']]
     mood, bpm = MOODS[b['mood']]
     sec = b['seconds']
-    bars = BARS[sec]
+    bar = 60 / bpm * 4
     return [
         f'角度：{name}    叙事：{arc}    关键证据：{need}',
-        f'配乐：{mood} {bpm} BPM    时长：{sec} 秒（{sec * bpm // 60 // 4 + 1} 小节左右）',
-        f'GRID.bars = {bars}',
-        '六拍：人生节点 / 断裂 / 分叉 / 收窄 / 出路 / 行动',
+        f'配乐：{mood} {bpm} BPM    时长：{sec} 秒 = {round(sec / bar)} 句字幕（一句一小节 {bar:.2f} 秒）',
+        f'出路：{b.get("outlet")}',
         f'出口：{b["cta"]}（不出联系方式）',
     ]
 

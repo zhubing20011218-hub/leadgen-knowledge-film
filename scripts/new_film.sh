@@ -1,25 +1,14 @@
 #!/usr/bin/env bash
 # 从模板建一个片子工程：bash scripts/new_film.sh ~/Desktop/film-被裁之后
-# 需要：ENGINE 指向竖屏渲染引擎目录（默认 ~/opus5.5-video/film/engine，已改 1080×1920）
+# 工程里只有自己的东西（brief.json、film.json、成片）；引擎和字体留在技能目录，render.py 自己挂进来。
 set -euo pipefail
 SKILL="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="${1:?用法: bash scripts/new_film.sh <目标目录>}"
-ENGINE="${ENGINE:-$HOME/opus5.5-video/film/engine}"
-
-[ -d "$ENGINE" ] || { echo "找不到渲染引擎：$ENGINE（用 ENGINE=... 指定）"; exit 1; }
-mkdir -p "$DEST"/{renders,review,audio,public,scripts}
-[ -e "$DEST/engine" ] || ln -s "$ENGINE" "$DEST/engine"
-
-cp "$SKILL/assets/film-template/palette.js" "$DEST/palette.js"
-cp "$SKILL/assets/film-template/film.js"    "$DEST/film.js"
-cp "$SKILL/assets/film-template/scenes.js"  "$DEST/scenes.js"
-cp "$SKILL/assets/film-template/index.html" "$DEST/index.html"
-cp "$SKILL/assets/score.mjs"                "$DEST/scripts/score.mjs"
-cp "$SKILL/assets/cues-120.json"            "$DEST/cues.json"
-
+[ -e "$DEST/film.json" ] && { echo "$DEST 里已经有 film.json，不覆盖"; exit 1; }
+mkdir -p "$DEST"/{renders,review,scripts}
+cp "$SKILL/template/index.html" "$SKILL/template/palette.js" "$SKILL/template/film.js" "$SKILL/template/scenes.js" "$DEST/"
+cp "$SKILL/scripts/score.mjs" "$DEST/scripts/score.mjs"
+[ -e "$DEST/brief.json" ] || cp "$SKILL/examples/01-被裁之后/brief.json" "$DEST/brief.json"
 echo "建好了：$DEST"
-echo "下一步："
-echo "  1) 改 film.js 里的 GRID（BPM / PHASE / 段落小节号）和 SUBS（字幕）"
-echo "  2) python3 engine/render.py $DEST --stills 3 7 13 19 25"
-echo "  3) node $DEST/scripts/score.mjs $DEST/cues.json   → public/score.wav"
-echo "  4) python3 engine/render.py $DEST --jobs 4"
+echo "下一步：把访谈答案写进 $DEST/brief.json，按 references/03 写 $DEST/film.json，然后"
+echo "  bash $SKILL/scripts/build.sh $DEST"

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>film</title>
+<style>
+/* engine/ 由 render.py 自带的小服务器挂到技能的 engine 目录；工程里不用拷引擎和字体 */
+@font-face{font-family:"VK Serif";src:url("engine/fonts/NotoSerifSC-VF.ttf");font-weight:200 900}
+@font-face{font-family:"VK Sans"; src:url("engine/fonts/NotoSansSC-VF.ttf"); font-weight:100 900}
+@font-face{font-family:"VK Mono"; src:url("engine/fonts/JetBrainsMono.ttf");font-weight:100 800}
+@font-face{font-family:"VK Latin";src:url("engine/fonts/CormorantGaramond.ttf");font-weight:300 700}
+@font-face{font-family:"VK Lora"; src:url("engine/fonts/Lora.ttf");font-weight:400 700}
+@font-face{font-family:"VK Type"; src:url("engine/fonts/CourierPrime-Regular.ttf")}
+html,body{margin:0;background:#000;overflow:hidden}
+canvas{display:block;height:100vh;width:56.25vh;margin:0 auto}
+#err{position:fixed;left:0;top:0;right:0;color:#f66;font:16px monospace;white-space:pre-wrap;padding:12px}
+</style></head>
+<body><canvas id="stage"></canvas><div id="err"></div>
+<script src="engine/vk.js"></script>
+<script src="palette.js"></script>
+<script src="scenes.js"></script>
+<script src="film.js"></script>
+</body></html>
