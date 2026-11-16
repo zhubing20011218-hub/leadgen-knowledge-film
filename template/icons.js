@@ -33,6 +33,9 @@ const ICONS = {
   ai(fr, c) { fr.rect(-30, -30, 60, 60, { r: 8, fill: B(), ...S(c) }); for (let i = -1; i <= 1; i++) { fr.line(i * 16, -30, i * 16, -44, S(c, 3.5)); fr.line(i * 16, 30, i * 16, 44, S(c, 3.5)); fr.line(-30, i * 16, -44, i * 16, S(c, 3.5)); fr.line(30, i * 16, 44, i * 16, S(c, 3.5)); } fr.text('AI', 0, 2, { font: 'sansh', size: 26, color: c, glow: 10 }); },
   video(fr, c) { fr.rect(-44, -32, 88, 64, { r: 8, fill: B(), ...S(c) }); fr.poly([[-10, -16], [18, 0], [-10, 16]], { close: true, fill: c }); },
   house(fr, c) { fr.poly([[-44, -4], [0, -44], [44, -4]], S(c, 5)); fr.rect(-32, -8, 64, 50, { fill: B(), ...S(c) }); fr.rect(-10, 14, 20, 28, { color: c, w: 3.5 }); },
+  chair(fr, c) { fr.rect(-26, -48, 52, 56, { r: 6, fill: B(), ...S(c) }); fr.rect(-34, 4, 68, 14, { r: 4, fill: B(), ...S(c) }); fr.line(-28, 18, -32, 48, S(c)); fr.line(28, 18, 32, 48, S(c)); fr.line(-16, -34, 16, -34, S(c, 3)); },
+  cup(fr, c) { fr.poly([[-26, -26], [26, -26], [20, 46], [-20, 46]], { close: true, fill: B(), ...S(c) }); fr.rect(-32, -38, 64, 12, { r: 4, fill: B(), ...S(c) }); fr.line(8, -38, 22, -56, S(c, 4)); [[-8, 30], [6, 34], [-2, 20], [10, 22]].forEach(([x, y]) => fr.circle(x, y, 4, { fill: c })); },
+  bowl(fr, c) { fr.path('M -46 -2 L 46 -2 Q 42 40 0 42 Q -42 40 -46 -2 Z', { fill: B(), color: c, w: 4.5, glow: 10 }); fr.line(-20, 42, 20, 42, S(c)); fr.line(-6, -46, 30, -8, S(c, 4)); fr.line(8, -50, 40, -14, S(c, 4)); fr.path('M -30 -2 q 8 -16 16 0 q 8 -16 16 0', { color: c, w: 3, a: 0.7 }); },
   briefcase(fr, c) { fr.rect(-44, -22, 88, 60, { r: 6, fill: B(), ...S(c) }); fr.rect(-14, -36, 28, 14, { r: 4, color: c, w: 4 }); fr.line(-44, 2, 44, 2, S(c, 3)); fr.rect(-6, -4, 12, 12, { fill: c }); },
 };
 

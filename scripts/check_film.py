@@ -21,10 +21,11 @@ TYPES = {   # 件名: (必填字段, {列表字段: (最少, 最多)})
     "object": (["icon"], {}),
     "flow": (["from", "to"], {}),
 }
-ICONS = set("phone laptop resume person people bed desk factory box ship plane globe money coins chartup chartdown clock calendar cart store chat ai video house briefcase".split())   # 和 template/icons.js 一致
+ICONS = set("phone laptop resume person people bed desk factory box ship plane globe money coins chartup chartdown clock calendar cart store chat ai video house briefcase chair cup bowl".split())   # 和 template/icons.js 一致
 # 字幕里允许的字：汉字、字母、数字、空格和少数数字符号；其余标点一律不许（字幕不带标点）
 SUB_OK = re.compile(r"^[一-鿿㐀-䶿A-Za-z0-9 %+×¥$/.]+$")
 CONTACT = r"微信|vx|VX|加我|私信我|联系方式|电话|二维码|QQ|扣扣|wx号|链接在评论|扣 ?1|扣 ?666|领资料|领取|免费送|私我"   # 后几个是诱导互动 / 导流话术，平台会限流
+SHOT_RATIO = 0.7   # 和 ds_make.py 同一个数：镜头数最多是句数的 70%
 PROMISE = r"月入|日入|年入|稳赚|躺赚|包赚|保证赚|一定赚|回本|暴富|财务自由|零风险|稳挣|零成本|零门槛|不用本钱|不要本钱|不花一分钱"
 INTERNAL = r"不含联系方式|访谈|\bbrief\b|作者本人账目|SOP|skill|DeepSeek|Claude|提示词|分镜|示例数据来自"
 ABSOLUTE = r"最好|最强|第一|唯一|100%|绝对|永远"
@@ -173,7 +174,7 @@ def main():
         span, cap = len(s["lines"]), capacity(d)
         if span > cap:
             msg = f"{tag}（{ty}）有 {span} 句，但这个件只能变 {cap} 次：后面 {span - cap} 句画面不动。让每句对上一条：第 k 条写第 k 句字幕说的东西（不许编数字、不许加字幕没说的）；后面几句说的东西这个件演不了，就从那句起开新镜"
-            (err if span - cap >= 2 else warn).append(msg)
+            err.append(msg)   # 一句画面不动 = 这句话没演出来；和"镜头太勤"打架时以这条为准（11-16：只当警告时模型为了少换镜，把演不了的句子硬塞进去）
         if ty in ("checklist", "steps", "cycle", "cards", "bars") and span >= 2:
             said = " ".join(str(ln.get("text", "")) for ln in s["lines"])
             items = d.get("rows") or d.get("nodes") or d.get("items") or []
@@ -218,12 +219,25 @@ def main():
                 nums = "、".join(f"{v:g}（在 {where[v]}）" for v in odd)
                 if re.search("按.*算|来源", note_txt): warn.append(f"{tag} 数字 {nums} 不在 brief 里（note 写了怎么算的 / 来源，放行，自己再核对一遍）")
                 elif ty == "timeline" and "示意" in note_txt: warn.append(f"{tag} 人生节点的数字 {nums} 是示意（放行）")
-                else: err.append(f"{tag} 数字 {nums} 在 brief 里找不到：疑似编造。用 brief 里的数；从 brief 算出来的，note 写「按 … 算」；公开规则写「来源：…」；拿不出依据就别放数字（「示意」只给人生节点用）")
+                else:
+                    tip = ""
+                    rows_bad = sorted({int(m) for v in odd for m in re.findall(r"rows\[(\d+)\]", where[v])})
+                    if rows_bad and isinstance(d.get("rows"), list):
+                        left = [r for i, r in enumerate(d["rows"]) if i not in rows_bad]
+                        tip = f"最小改法：删掉 rows[{'] / rows['.join(map(str, rows_bad))}]"
+                        if ty == "bars" and len(left) == 1:
+                            r = left[0]; tip += f"；删完 bars 只剩一条，比不了大小，整镜换成 number：\"values\": [{r.get('value')}]，\"units\": [\"{r.get('label', '')}\"]，unit 写进 suffix"
+                        tip += "。"
+                    err.append(f"{tag} 数字 {nums} 在 brief 里找不到：疑似编造。{tip}用 brief 里的数；从 brief 算出来的，note 写「按 … 算」；公开规则写「来源：…」；拿不出依据就别放数字（「示意」只给人生节点用）")
         has_num = any(NUM.search(x) for x in strings({k: v for k, v in d.items() if k not in ("type", "note", "breakAt", "breakStep", "pick", "max")})) or any(NUM.search(str(ln.get("text", ""))) for ln in s["lines"])
         if has_num and ty not in ("title", "statement", "steps") and not any(notes):
             err.append(f"{tag}（{ty}）屏上有数字，但没有 note 写出处（真实来源 / 示例 / 示意）")
         if brief.get("example") and has_num and any(notes) and not any(n and re.search("示例|示意", n) for n in notes):
             err.append(f"{tag} brief 标了 example（数字不是真实数据），note 必须写「示例」或「示意」")
+    for a, b in zip(shots, shots[1:]):   # 先揭晓（pick）再逐条讲（focus）：答案提前露了底
+        da, db = a["shot"], b["shot"]
+        if da.get("type") == db.get("type") == "fork" and da.get("focus") is None and db.get("focus") is not None and da.get("paths") == db.get("paths"):
+            err.append(f"{a['tag']} 先用 pick 把答案亮出来了，后面几镜才逐条讲同一组路，顺序反了：这一镜改成 \"focus\": 0（讲第一条），最后讲到的那条就是答案，不用 pick")
     for a, b in zip(shots, shots[1:]):   # 连着几镜逐条讲同一组岔路：每镜的 paths 要一模一样，只改 focus
         da, db = a["shot"], b["shot"]
         if da.get("type") == db.get("type") == "fork" and da.get("focus") is not None and db.get("focus") is not None and da.get("paths") != db.get("paths"):
@@ -242,9 +256,20 @@ def main():
             per = "，".join(f"「{c.get('name')}」{len(c.get('lines') or [])} 句" for c in chs)
             how = f"还差 {want - n} 句：挑一两章往后加句子（加在已有的镜后面，或开新镜）" if n < want else f"多了 {n - want} 句：删掉最弱的几句"
             err.append(f"{brief['seconds']} 秒 @ {bpm} BPM 要正好 {want} 句（一句一小节 {bar:.2f} 秒），现在 {n} 句。{how}。现在各章：{per}")
-    if shots and shots[0]["shot"].get("type") not in ("title", "statement", "timeline", "number", "compare"): warn.append("开头第一镜不是钩子类（title / statement / timeline / number / compare），确认前 3 秒能让人停下")
-    if len(lines) >= 8 and len(shots) > 0.75 * len(lines):
-        warn.append(f"镜头换得太勤：{len(lines)} 句用了 {len(shots)} 镜。标杆样片是一章一个主画面撑 3–4 句、每句往上加一样东西；能合的合进同一镜（rows / values / nodes 多写几条）")
+    if shots and shots[0]["shot"].get("type") not in ("title", "statement", "timeline", "number", "compare", "fork", "object"): warn.append("开头第一镜不是钩子类（title / statement / timeline / number / compare / fork / object，见 references/02 的钩子表），确认前 3 秒能让人停下")
+    if len(lines) >= 8:   # 首尾回扣：倒数两句里要有第一句的词（看完想再刷一遍开头）
+        first = re.sub(r"\s", "", str(lines[0].get("text", "")))
+        tail = "".join(str(ln.get("text", "")) for ln in lines[-3:-1])
+        if not any(first[i:i + 2] in tail for i in range(len(first) - 1)):
+            warn.append(f"结尾没回扣开头：倒数第二、三句用回第一句「{lines[0].get('text')}」里的词或画面，但意思变了")
+    pics = sum(1 for i, x in enumerate(shots) if not (i and x["shot"].get("type") == "fork" and x["shot"].get("focus") is not None
+                                                      and shots[i - 1]["shot"].get("type") == "fork" and shots[i - 1]["shot"].get("paths") == x["shot"].get("paths")))   # 逐条讲同一组岔路只换高亮，算一个画面
+    if len(lines) >= 8 and pics > SHOT_RATIO * len(lines):
+        warn.append(f"镜头换得太勤：{len(lines)} 句换了 {pics} 次画面（最多 {int(SHOT_RATIO * len(lines))} 次）。标杆样片是一章一个主画面撑 3–4 句、每句往上加一样东西；能合的合进同一镜（rows / values / nodes 多写几条）。但合进去的每一句都要让画面多一样东西，做不到就宁可开新镜")
+    run = 0
+    for x in shots:
+        run = run + 1 if x["shot"].get("type") in ("statement", "title") else 0
+        if run == 3: warn.append(f"{x['tag']} 已经连着 3 镜是纯大字（statement / title），画面单调：中间换一镜有东西的（object / steps / compare），或把两句合进同一镜"); break
     plain = sum(1 for s in shots if s["shot"].get("type") == "statement")
     if shots and plain > len(shots) / 2: warn.append(f"{plain}/{len(shots)} 镜是纯文字 statement，画面太少")
     if not re.search("主页|合集|评论", "".join(every[-40:])): warn.append("结尾没有看到下一步（主页 / 合集 / 评论区）")

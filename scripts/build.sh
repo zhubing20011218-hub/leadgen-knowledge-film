@@ -6,13 +6,15 @@ set -euo pipefail
 SKILL="$(cd "$(dirname "$0")/.." && pwd)"
 P="$(cd "${1:?用法: bash scripts/build.sh <工程目录>}" && pwd)"
 PY="${PYTHON:-}"; [ -z "$PY" ] && [ -x "$SKILL/.venv/bin/python" ] && PY="$SKILL/.venv/bin/python"; PY="${PY:-python3}"
+shift; SHEET=0; REMIX=0; UPD=0   # 开关不分先后，可以一起用（11-16 修：原来 --update-template 会把后面的 --sheet-only 吃掉，变成整片渲染）
+for a in "$@"; do case "$a" in --sheet-only) SHEET=1;; --remix) REMIX=1;; --update-template) UPD=1;; *) echo "不认识的参数：$a"; exit 2;; esac; done
 $PY -c "import playwright, PIL" 2>/dev/null || { echo "缺 Python 依赖：先跑一次 bash $SKILL/scripts/setup.sh"; exit 2; }
 command -v node >/dev/null || { echo "缺 node"; exit 2; }
 command -v ffmpeg >/dev/null || { echo "缺 ffmpeg"; exit 2; }
 $PY "$SKILL/engine/get_fonts.py" --check >/dev/null || $PY "$SKILL/engine/get_fonts.py"
 
 # 工程里的模板是建工程时拷的；技能升级后旧工程不会自己变。--update-template 换成技能里最新的（工程里自己写的件会被覆盖）
-if [ "${2:-}" = "--update-template" ]; then cp "$SKILL/template/"{index.html,palette.js,icons.js,film.js,scenes.js} "$P/"; echo "模板已换成技能里最新的"; set -- "$1"; fi
+if [ "$UPD" = 1 ]; then cp "$SKILL/template/"{index.html,palette.js,icons.js,film.js,scenes.js} "$P/"; echo "模板已换成技能里最新的"; fi
 for f in index.html palette.js icons.js film.js scenes.js; do
   cmp -s "$SKILL/template/$f" "$P/$f" || { echo "提醒：$P/$f 和技能里的模板不一样（技能升级过，或者你改过）。要换成最新的：bash $SKILL/scripts/build.sh $P --update-template"; break; }
 done
@@ -20,7 +22,7 @@ BRIEF=""; [ -f "$P/brief.json" ] && BRIEF="$P/brief.json"
 echo "== 1/5 检查 film.json"
 $PY "$SKILL/scripts/check_film.py" "$P/film.json" $BRIEF
 TIMES="$(python3 "$SKILL/scripts/sheet_times.py" "$P/film.json")"   # 每句播到一半的那一帧，不截在换句的瞬间
-if [ "${2:-}" = "--sheet-only" ]; then $PY "$SKILL/engine/render.py" "$P" --sheet $TIMES; exit 0; fi
+if [ "$SHEET" = 1 ]; then $PY "$SKILL/engine/render.py" "$P" --sheet $TIMES; exit 0; fi
 
 echo "== 2/5 配乐（按片子结构合成，卡在小节线上）"
 mkdir -p "$P/scripts" "$P/public"
@@ -29,10 +31,10 @@ node "$SKILL/scripts/make_cues.mjs" "$P/film.json" > "$P/scripts/cues.json"
 node "$P/scripts/score.mjs" "$P/scripts/cues.json"
 
 echo "== 3/5 渲画面"
-if [ "${2:-}" = "--remix" ] && [ -f "$P/renders/raw.mp4" ]; then echo "沿用 renders/raw.mp4"; else $PY "$SKILL/engine/render.py" "$P" --jobs 4; fi
+if [ "$REMIX" = 1 ] && [ -f "$P/renders/raw.mp4" ]; then echo "沿用 renders/raw.mp4"; else $PY "$SKILL/engine/render.py" "$P" --jobs 4; fi
 
 echo "== 4/5 混音到 -14 LUFS、真峰 ≤ -1 dBTP，写入 AI 生成标记"
-[ "${2:-}" = "--remix" ] && echo "（只重新混音，不重渲画面）"
+[ "$REMIX" = 1 ] && echo "（只重新混音，不重渲画面）"
 # 合成鼓点峰值很尖：先压峰值，再提到 -14 LUFS，最后留 1 dB 给 AAC 编码的过冲（11-15 实测：只做 loudnorm 真峰会到 0 dB）
 MIX="alimiter=limit=0.4:level=false:attack=1:release=60,loudnorm=I=-14:TP=-2:LRA=11,alimiter=limit=0.79:level=false:attack=1:release=60,aresample=48000"
 NAME="$($PY -c "import json,sys; print(json.load(open(sys.argv[1],encoding='utf-8')).get('title') or 'film')" "$P/film.json")"

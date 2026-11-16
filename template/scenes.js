@@ -99,9 +99,9 @@ const SCENES = {
   /* 从 A 到 B：{from:{icon,label,sub}, to:{icon,label,sub}, via?:{icon,label}} —— 第一句出 A，第二句（只有一句就第三拍）
    * 光点带着 via 沿弧线走到 B（"工厂 → 轮船 → 越南""国内 → 海外"） */
   flow(fr, c) {
-    const d = c.d, A = d.from || {}, Bp = d.to || {}, V = d.via, tr = c.span > 1 ? c.bar : c.beat * 2;
+    const d = c.d, A = d.from || {}, Bp = d.to || {}, V = d.via, tr = c.span > 1 ? c.bar : c.beat, dur = c.span > 1 ? 0.9 : 0.7;   // 只有一句时第二拍就出发，句子说完前到达
     const ax = 280, ay = 640, bx = 800, by = 1080;
-    const ka = E.out3(seg(c.lt, 0, 0.4)), km = E.io3(seg(c.lt, tr, tr + 0.9)), kb = E.out3(seg(c.lt, tr + 0.6, tr + 1.0));
+    const ka = E.out3(seg(c.lt, 0, 0.4)), km = E.io3(seg(c.lt, tr, tr + dur)), kb = E.out3(seg(c.lt, tr + dur * 0.65, tr + dur + 0.1));
     const pt = u => [lerp(ax, bx, u) + Math.sin(u * Math.PI) * 140, lerp(ay, by, u) - Math.sin(u * Math.PI) * 60];
     const pts = []; for (let i = 0; i <= 40; i++) pts.push(pt(i / 40));
     fr.poly(pts, { color: c.col, w: 3, a: 0.25 * ka, dash: [10, 12] });
@@ -154,11 +154,17 @@ const SCENES = {
     const n = vals.length, i = Math.max(0, current(c, n)), prev = i > 0 ? vals[i - 1] : (d.from != null ? Number(d.from) : 0);
     const ti = at(c, i, n), packed = n > c.span && i >= c.span - 1;   // 比句子多的值挤在最后一句里按拍子换
     const k = E.out3(seg(c.lt, ti, ti + (i === 0 && d.from == null ? 0.05 : packed ? 0.4 : 0.7)));
-    const v = lerp(prev, vals[i], k), Y = 720;
+    const v = lerp(prev, vals[i], k), Y = d.bar ? 720 : 830;   // 下面没有条就往下放，别让主体挤在上半截
     const str = fmt(v, dec), u = (d.units && d.units[i]) || d.unit || '';
     const groupW = sz => (d.prefix ? fr.measure(d.prefix, { font: 'sansh', size: sz * 0.45 }) + 14 : 0) + fr.measure(fmt(vals[i], dec) + (d.suffix || ''), { font: 'sansh', size: sz, track: -4 }) + (u ? 18 + fr.measure(u, { font: 'sansh', size: 46 }) : 0);
     let size = 300; while (size > 60 && groupW(size) > CW - 20) size -= 6;
-    if (i > 0) fr.text((d.prefix || '') + fmt(prev, dec) + (d.suffix || ''), CX + 30, Y - 40, { font: 'sansh', size, track: -4, color: c.alt, a: 0.18 * (1 - 0.5 * k), blur: 3 });
+    if (n > 1) size = Math.min(size, 260);   // 上面要给旧值留一行
+    if (i > 0) {   // 旧值缩小放在上面、划一道：读得出"从 A 变成了 B"，不和新值叠成重影
+      const gs = Math.min(110, size * 0.36), gt = (d.prefix || '') + fmt(prev, dec) + (d.suffix || '') + ((d.units && d.units[i - 1]) ? ' ' + d.units[i - 1] : ''), gy = Y - size * 0.62 - gs * 0.6;
+      const gw = fr.measure(gt, { font: 'sansh', size: gs }), ga = 0.55 * E.out3(seg(c.lt, ti, ti + 0.4));
+      fr.text(gt, CX, gy, { font: 'sansh', size: gs, color: c.alt, a: ga });
+      fr.line(CX - gw / 2 - 8, gy, CX - gw / 2 - 8 + (gw + 16) * E.out3(seg(c.lt, ti + 0.1, ti + 0.5)), gy, { color: c.alt, w: 5, a: ga });
+    }
     const ent = E.out3(seg(c.lt, 0, 0.35));
     fr.g({ at: [CX, Y], s: lerp(0.86, 1, ent) * (1 + 0.04 * (1 - seg(c.lt, ti, ti + 0.25)) * (i > 0 ? 1 : 0)) }, () => {
       const pw = d.prefix ? fr.measure(d.prefix, { font: 'sansh', size: size * 0.45 }) + 14 : 0;
@@ -274,7 +280,7 @@ const SCENES = {
   /* 一组对比：{left:{label, value, sub?}, right:{label, value, sub?}, badge?:{label, value}}
    * 第一句只出左边；第二句（只有一句就第三拍）箭头走过去，出右边和角标 */
   compare(fr, c) {
-    const d = c.d, L = d.left || {}, R = d.right || {}, y = 560, h = 440;
+    const d = c.d, L = d.left || {}, R = d.right || {}, y = d.badge ? 560 : 680, h = 440;   // 没有角标时整体往下放，主体别挤在上半截
     const tr = c.span > 1 ? c.bar : c.beat * 2;
     const k1 = E.out3(seg(c.lt, 0, 0.4)), ka = E.out3(seg(c.lt, tr, tr + 0.5)), k2 = E.out3(seg(c.lt, tr + 0.25, tr + 0.7)), kb = E.out5(seg(c.lt, tr + 0.6, tr + 1.0));
     card(fr, X0, y, CW, h, c.col, { a: k1, edge: 0.35 });
@@ -302,8 +308,8 @@ const SCENES = {
   /* 打勾清单：{title?, rows:[{text, ok?:true|false, note?}]} —— 一句勾一条；ok:false 画一道横线、发灰 */
   checklist(fr, c) {
     const d = c.d, rows = d.rows || [], n = rows.length, cur = current(c, n);
-    const big = n <= 3, fs = big ? 60 : 46, bx = big ? 88 : 68;   // 条目少就放大，别让画面空着
-    const gap = Math.min(big ? 200 : 150, 760 / Math.max(n, 1)), y0 = 600 + (760 - gap * n) / 2;
+    const big = n <= 3, huge = n <= 2, fs = huge ? 74 : big ? 60 : 46, bx = huge ? 108 : big ? 88 : 68;   // 条目少就放大，别让画面空着
+    const gap = Math.min(huge ? 250 : big ? 200 : 150, 760 / Math.max(n, 1)), y0 = 620 + (760 - gap * n) / 2;
     if (d.title) fr.text(d.title, X0, y0 - (big ? 130 : 90), { font: 'sansh', size: big ? 54 : 44, color: INK.text, align: 'l', a: E.out3(seg(c.lt, 0, 0.3)) });
     rows.forEach((r, i) => {
       const a0 = at(c, i, n), k = E.out3(seg(c.lt, a0, a0 + 0.35)); if (k <= 0) return;
@@ -324,15 +330,17 @@ const SCENES = {
   /* 一步一步：{rows:[{text, note?}]} —— 01 02 03 竖排，连线往下长；片尾给"下一步"用 */
   steps(fr, c) {
     const d = c.d, rows = d.rows || [], n = rows.length, cur = current(c, n);
-    const gap = Math.min(190, 820 / Math.max(n, 1)), y0 = 560 + (820 - gap * n) / 2, x = X0 + 50;
+    const big = n <= 3, R = big ? 56 : 44, ts = big ? 62 : 48, ns = big ? 30 : 28;   // 步骤少就放大
+    const gap = Math.min(big ? 240 : 190, 820 / Math.max(n, 1)), y0 = 600 + (820 - gap * n) / 2, x = X0 + R + 6;
     rows.forEach((r, i) => {
       const a0 = at(c, i, n), k = E.out3(seg(c.lt, a0, a0 + 0.4)); if (k <= 0) return;
       const y = y0 + i * gap, hot = i === cur;
-      if (i < n - 1) fr.line(x, y + 46, x, y + 46 + (gap - 92) * E.out3(seg(c.lt, a0 + 0.3, a0 + 0.8)), { color: c.col, w: 3, a: 0.5 });
-      fr.circle(x, y, 44, { fill: hot ? c.col : INK.card, fa: hot ? 0.95 : 0.8, color: c.col, w: 3, a: k, glow: hot ? 22 : 0 });
-      fr.text(String(i + 1).padStart(2, '0'), x, y + 2, { font: 'sansh', size: 34, color: hot ? INK.base : c.col, a: k });
-      fr.text(r.text, x + 84, y - (r.note ? 18 : 0), { font: 'sansh', size: 48, color: hot ? INK.white : INK.text, align: 'l', a: k });
-      if (r.note) fr.text(r.note, x + 84, y + 38, { font: 'sansr', size: 28, color: INK.dim, align: 'l', a: k });
+      if (i < n - 1) fr.line(x, y + R + 2, x, y + R + 2 + (gap - 2 * R - 4) * E.out3(seg(c.lt, a0 + 0.3, a0 + 0.8)), { color: c.col, w: 3, a: 0.5 });
+      fr.circle(x, y, R, { fill: hot ? c.col : INK.card, fa: hot ? 0.95 : 0.8, color: c.col, w: 3, a: k, glow: hot ? 22 : 0 });
+      fr.text(String(i + 1).padStart(2, '0'), x, y + 2, { font: 'sansh', size: R * 0.78, color: hot ? INK.base : c.col, a: k });
+      const tx = x + R + 40, tsz = Math.min(ts, fit(fr, r.text, 'sansh', ts, XR - tx));
+      fr.text(r.text, tx, y - (r.note ? ts * 0.38 : 0), { font: 'sansh', size: tsz, color: hot ? INK.white : INK.text, align: 'l', a: k });
+      if (r.note) fr.text(r.note, tx, y + ts * 0.8, { font: 'sansr', size: ns + (big ? 4 : 0), color: INK.dim, align: 'l', a: k });
     });
   },
 

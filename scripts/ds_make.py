@@ -120,22 +120,55 @@ REVIEW_SYS = """你是竖屏知识短片的严格评审。给你一张拼图：�
 
 
 MOOD_BPM = {"steady": 112, "tight": 128, "calm": 100}
-BEATS = [("① 人生节点 / 处境", 0.18), ("② 断裂 + 片名", 0.12), ("③ 分叉", 0.2), ("④ 收窄 / 证据", 0.22), ("⑤ 出路", 0.16), ("⑥ 行动", 0.12)]
+BEATS = [("① 开场钩子 + 处境", 0.18), ("② 断裂 + 片名", 0.12), ("③ 分叉", 0.2), ("④ 收窄 / 证据", 0.22), ("⑤ 出路", 0.16), ("⑥ 行动", 0.12)]
+
+
+SHOT_RATIO = 0.7   # 镜头数最多是句数的 70%：再多就像一句一换，比标杆样片跳（11-16 定的折中，改这一个数即可）
+
+# 开场钩子（references/02 的表）：(名字, 写法, 第一镜用)
+HOOKS = {
+    "熟悉的场景": ("一个他天天见的画面，第一句就让他认出自己", "object（配图标）"),
+    "人生剧本": ("一条人人走过的路，走到一半断掉", "timeline"),
+    "反常识的数": ("一个让人「啊？」的数，下一句说它从哪来", "number"),
+    "先让他选": ("抛一个二选一，下一句才揭晓", "fork"),
+    "一句扎心的话": ("说出他心里不敢说的那句", "statement"),
+    "前后对比": ("同一件事换个地方 / 时间就不一样", "compare"),
+    "一大堆": ("用数量压人（投了几十份简历）", "object（写 count）"),
+    "结局先说": ("先给结局，再倒回去讲怎么走到这", "title"),
+}
+
+
+def pick_hook(brief):
+    """挑开场钩子：brief.hook 指定就用它；否则按 brief 里有什么真东西挑，挑不出就按题目轮换——同一个账号天天发，开头不能每条都是人生时间轴。"""
+    if brief.get("hook") in HOOKS: return brief["hook"]
+    txt = " ".join(map(str, (brief.get("pain") or []) + (brief.get("proof") or [])))
+    cands = []
+    if re.search(r"几十|上百|上千|\d{2,}\s*(份|个|次|家|条)", txt): cands.append("一大堆")
+    if len(re.findall(r"\d+(?:\.\d+)?", txt)) >= 2: cands.append("反常识的数")
+    if re.search(r"床|躺|简历|工位|手机|电脑|店|仓库|包裹|孩子", txt): cands.append("熟悉的场景")
+    cands += ["结局先说", "一句扎心的话", "前后对比", "先让他选", "人生剧本"]
+    seed = sum(ord(ch) for ch in str(brief.get("audience", "")) + str(brief.get("outlet", "")))
+    return cands[seed % len(cands)]
 
 
 def plan_lines(brief):
-    """先替模型把句数算好：总句数 + 每一拍几句（弱模型数不清句数，填空比自己数稳）。"""
+    """先替模型把句数、镜数、开头结尾怎么写算好（弱模型数不清句数，填空比自己数稳）。"""
     bpm = MOOD_BPM.get(brief.get("mood"), 112); n = round(brief.get("seconds", 30) / (60 / bpm * 4))
     raw = [n * w for _, w in BEATS]; cnt = [max(1, int(x)) for x in raw]
     for i in sorted(range(len(raw)), key=lambda i: raw[i] - int(raw[i]), reverse=True):
         if sum(cnt) >= n: break
         cnt[i] += 1
     while sum(cnt) > n: cnt[cnt.index(max(cnt))] -= 1
+    hook = pick_hook(brief); how, first = HOOKS[hook]; cap = int(n * SHOT_RATIO)
+    shots = (f"全片最多 {cap} 镜（{n} 句）：一镜撑 2–4 句，第一句开镜，后面的句子不写 shot，让同一镜往上加东西——"
+             "第 k 句加上去的那一条就是第 k 句字幕说的东西（rows / nodes / values 按句子顺序写，一句对一条），字幕没说的东西不许加。"
+             "某句说的东西这一镜演不了时，先试着把这句换个说法接上这一镜（说它画面上有的那样东西），实在接不上才开新镜。")
+    ends = (f"开场用「{hook}」：{how}，第一镜用 {first}；不要用「大家好」「你知道吗」。"
+            "倒数第二句回扣第一句：用回第一句里的那个词或那个画面，但意思变了（比如开头问一个选择，结尾给出答案；开头是一张床，结尾还是那张床、但人已经起来了）。用你自己的话写，不要照抄这里和 references 里的例句；最后一句落到 cta。")
     if brief.get("angle") == "custom":
-        return bpm, n, f"bpm 写 {bpm}。这条片必须正好 {n} 句字幕（写完数一遍），按商量好的结构分 {max(3, n // 4)}–{max(4, n // 3)} 章，每章 2–5 句。每章只用 1–2 镜：第一句开镜，后面的句子不写 shot，让同一镜往上加东西——第 k 句加上去的那一条就是第 k 句字幕说的东西（rows / nodes / values 按句子顺序写，一句对一条），字幕没说的东西不许加；某句说的东西这一镜画不出来（比如飞轮图里报一个数），这句就开新镜。"
+        return bpm, n, f"bpm 写 {bpm}。这条片必须正好 {n} 句字幕（写完数一遍），按商量好的结构分 {max(3, n // 4)}–{max(4, n // 3)} 章，每章 2–5 句。{shots}{ends}"
     lines = "；".join(f"{b} {c} 句" for (b, _), c in zip(BEATS, cnt))
-    return bpm, n, (f"bpm 写 {bpm}。这条片必须正好 {n} 句字幕（写完数一遍）。按六拍分：{lines}。每拍是 1–2 章，每章 2–5 句。"
-                    f"每章只用 1–2 镜：第一句开镜，后面的句子不写 shot，让同一镜往上加东西——第 k 句加上去的那一条就是第 k 句字幕说的东西（rows / nodes / values 按句子顺序写，一句对一条），字幕没说的东西不许加；某句说的东西这一镜画不出来（比如飞轮图里报一个数），这句就开新镜。一句一换画面会很跳，句句对不上更糟。")
+    return bpm, n, f"bpm 写 {bpm}。这条片必须正好 {n} 句字幕（写完数一遍）。按六拍分：{lines}。每拍是 1–2 章，每章 2–5 句。{shots}{ends}"
 
 
 ICON_NAMES = " ".join(re.findall(r"^  (\w+)\(fr, c\)", (SKILL / "template/icons.js").read_text(encoding="utf-8"), re.M))
@@ -175,7 +208,7 @@ def main():
     system = {"role": "system", "content": WRITE_SYS + docs()}
     bpm, n_lines, plan = plan_lines(json.loads(brief))
     ask = {"role": "user", "content": "brief.json：\n" + brief + "\n\n" + plan + "\n按 references/03 的格式写 film.json（只输出 JSON）。"}
-    print(f"模型 {model} · 预算 ¥{budget} · {'高峰' if peak_now() else '空闲（半价）'}时段")
+    print(f"开场：{pick_hook(json.loads(brief))} · " + f"模型 {model} · 预算 ¥{budget} · {'高峰' if peak_now() else '空闲（半价）'}时段")
 
     if "--review-only" in a: a.append("--keep")
     if "--keep" in a and (proj / "film.json").exists():
@@ -187,17 +220,24 @@ def main():
     def save(f): (proj / "film.json").write_text(json.dumps(f, ensure_ascii=False, indent=1), encoding="utf-8")
 
     def fix_loop(film, tag):
-        save(film); warned = False; last = None; used_pro = False
+        save(film); warned = False; last = None; used_pro = False; retried = False
         for r in range(rounds + 2):
             ok, out, errs, warns = check(proj)
             stuck = bool(errs) and last is not None and len(errs) >= len(last); last = errs   # 错误没减少 = 卡住
             final = r >= rounds and errs and not used_pro and model == "deepseek-flash"   # 轮数用完还有错：最后给 pro 一次机会
             if r > rounds or (r == rounds and not final): print("   " + out.splitlines()[0] + ("　✓" if ok else f"　✗ {len(errs)} 个错")); return film, ok
             print("   " + out.splitlines()[0] + ("　✓" if ok else f"　✗ {len(errs)} 个错"))
+            warns = [w for w in warns if "镜头换得太勤" not in w]   # 只给人看：发给模型它会把演不了的句子硬并进去，又冒出"画面不动"的错，来回拉锯（11-16 实测）
             todo = errs + ([] if warned else warns)
             if ok and (warned or not warns): return film, ok
             if ok: warned = True
             ask_fix = "检查结果如下，照着改（只改有问题的地方，其他保持原样），输出完整 film.json：\n" + "\n".join(todo)
+            if stuck and not retried and model == "deepseek-flash":
+                # 第一次卡住先不换 pro：多半是报错没看懂。flash 只看说明 + 当前稿 + 这几条错再改一次（说明部分照样命中缓存，pro 一轮要 ¥0.05–0.09）
+                print("   （同样的错没改掉，flash 只盯这几处再改一次）"); retried = True
+                film = chat(key, base, model, [system, ask, {"role": "assistant", "content": json.dumps(film, ensure_ascii=False)},
+                                               {"role": "user", "content": "上一轮这几处没改掉。逐条照报错里的「最小改法」做，别的地方一个字都不动，输出完整 film.json：\n" + "\n".join(errs)}], led, f"{tag}改第{r + 1}轮·盯错")
+                save(film); convo.append({"role": "assistant", "content": json.dumps(film, ensure_ascii=False)}); continue
             if (stuck or final) and model == "deepseek-flash" and not used_pro:
                 # 换 pro 改这一轮。pro 上没有缓存，只发说明 + brief + 当前稿 + 报错，不发前面几轮的来回（实测整段对话发过去一轮要 ¥0.2）
                 print("   （" + ("同样的错没改掉" if stuck else "轮数用完还有错") + "，这一轮换 deepseek-v4-pro）"); used_pro = True
@@ -216,15 +256,19 @@ def main():
 
     py = python_bin()
     if "--no-review" not in a:
-        print("== 截图 + 看图评审")
+        print("== 截图 + 画面体检 + 看图评审")
         subprocess.run([py, str(SKILL / "engine/render.py"), str(proj), "--sheet", *mid_times(proj)], check=True, stdout=subprocess.DEVNULL)
+        qa = json.loads(subprocess.run([py, "-W", "ignore", str(SKILL / "scripts/frame_qa.py"), str(proj), "--json"], capture_output=True, text=True, check=True).stdout or "[]")
+        print(f"   画面体检（按像素量，不花钱）：{len(qa)} 处")
+        for q in qa: print(f"   - 第{q['line']}句（{q['type']}）{q['problem']}")
         img = base64.b64encode((proj / "review/sheet.jpg").read_bytes()).decode()
         rv = chat(key, base, VISION, [{"role": "system", "content": REVIEW_SYS},
                                       {"role": "user", "content": [{"type": "text", "text": "字幕表：\n" + line_table(film)},
                                                                    {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + img}}]}], led, "看图评审", max_tokens=2000)
         issues = rv.get("issues") or []
         (proj / "review/review.json").write_text(json.dumps(rv, ensure_ascii=False, indent=1), encoding="utf-8")
-        content = [i for i in issues if i.get("kind") == "content"]; engine = [i for i in issues if i.get("kind") != "content"]
+        content = [i for i in issues if i.get("kind") == "content"] + [{"line": q["line"], "kind": "content", "problem": q["problem"], "fix": "照上面说的改"} for q in qa]
+        engine = [i for i in issues if i.get("kind") != "content"]
         print(f"   总评：{rv.get('verdict', '')}　内容问题 {len(content)} 个 · 画面件问题 {len(engine)} 个")
         for i in issues: print(f"   - 第{i.get('line')}句 [{i.get('kind')}] {i.get('problem')} → {i.get('fix')}")
         if engine:
@@ -235,6 +279,9 @@ def main():
             film, ok = fix_loop(film, "复查")
             if not ok: sys.exit("按评审改完又出了检查错误，停下，看 film.json")
     subprocess.run([py, str(SKILL / "engine/render.py"), str(proj), "--sheet", *mid_times(proj)], check=True, stdout=subprocess.DEVNULL)   # 最后一版的拼图
+    qa = json.loads(subprocess.run([py, "-W", "ignore", str(SKILL / "scripts/frame_qa.py"), str(proj), "--json"], capture_output=True, text=True).stdout or "[]")
+    print(f"== 最后一版画面体检：{len(qa)} 处" + ("（不影响出片，想更好就手动改 film.json）" if qa else " ✓"))
+    for q in qa: print(f"   - 第{q['line']}句（{q['type']}）{q['problem']}")
     print(f"== 完成：{proj}/film.json · 拼图 {proj}/review/sheet.jpg · 这次花 ¥{led.total:.4f}，这条片累计 ¥{sum(r['yuan'] for r in led.before + led.rows):.4f}")
     if "--render" in a:
         subprocess.run(["bash", str(SKILL / "scripts/build.sh"), str(proj)], check=True, env={**os.environ, "PYTHON": py})

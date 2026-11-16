@@ -12,6 +12,7 @@ brief.json 字段：
   audience   给谁看（一句话，≤30 字）
   pain       处境三句（每条 ≤30 字，必须有具体年龄/岗位/事件）
   proof      证据 2–4 条（每条 ≤40 字，最好 2 条带数字；没有数字就讲流程和坑）
+  hook       可选：开场钩子（references/02 钩子表第一列的名字，如「人生剧本」）；不写就按题材自动挑
   example    true = 这些数字是编的示例（只能用来试做，片上一律标「示例」，不能发布）
   cta        下一步（主页合集 / 评论区 / 收藏）
   seconds    30 | 60 | 90
@@ -80,6 +81,9 @@ def check(b):
         warns.append('proof 带数字的不到 2 条：这条片改讲流程和坑，不硬上百分比')
     if not (b.get('outlet') or '').strip():
         errs.append('outlet（出路）不能空：片子最后把观众引到哪个方向？默认填「跨境电商」')
+    HOOKS = ('熟悉的场景', '人生剧本', '反常识的数', '先让他选', '一句扎心的话', '前后对比', '一大堆', '结局先说')
+    if b.get('hook') and b['hook'] not in HOOKS:
+        errs.append(f'hook「{b["hook"]}」不认识，只能是：' + ' '.join(HOOKS) + '（或不写）')
     if b.get('example'):
         warns.append('example = true：数字是编的，只能试做；片上每个数字都要标「示例」，这条片不能发布')
 

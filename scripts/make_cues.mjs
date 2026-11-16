@@ -4,6 +4,7 @@
 //   每章换一个和弦（Am → F → C → G 循环）；第一章只有拨弦和镲，从第二章起鼓进来；
 //   反转那一章（film.json 里 chapter.turn = true，不写就取倒数第二章）之前的一小节撤掉鼓，留一口气，
 //   反转落在重拍上全编制回来；每句字幕起点一声轻 tick，每章起点一声 drop，片名和反转各一记 boom。
+//   开场章：第一帧一记 boom，每小节第一拍一下轻底鼓（前 3 秒要有冲击，11-16 实测原来开头 3 小节是全片最安静的）。
 import {readFileSync} from 'node:fs';
 
 const film = JSON.parse(readFileSync(process.argv[2], 'utf8'));
@@ -29,6 +30,10 @@ CH.forEach((c, i) => {
   bed.push({type: 'pad', note: ch.root, start: r3(a), end: r3(b + 0.25), gain: 0.13, fade: 0.25});
   patterns.push({type: 'pluck', every: 0.5, start: r3(a), end: r3(gapStart), notes: ch.arp, gain: i === 0 ? 0.09 : 0.075, decay: 0.993});
   patterns.push({type: 'hat', every: 1, start: r3(a + BEAT / 2), end: r3(gapStart), gain: 0.07});
+  if (i === 0) {   // 开场章不上整套鼓，但每小节第一拍一下轻底鼓：前 3 秒决定划不划走，换画面要有一下"咚"
+    patterns.push({type: 'kick', every: 4, start: r3(a), end: r3(gapStart), gain: 0.32});
+    if (!c.title) events.push({type: 'boom', t: r3(a), gain: 0.42});
+  }
   if (i >= 1) {
     patterns.push({type: 'kick', every: 1, start: r3(a), end: r3(gapStart), gain: 0.5});
     patterns.push({type: 'clap', every: 2, start: r3(a + BEAT), end: r3(gapStart), gain: 0.16, tone: 0.6});
