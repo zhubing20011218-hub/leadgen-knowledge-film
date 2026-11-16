@@ -71,10 +71,12 @@ bash scripts/setup.sh             # 缺东西就跑一次：建 .venv、装 play
 ## 3. 出片
 
 ```bash
-bash scripts/new_film.sh ~/Desktop/film-xxx                # 建工程（放 brief.json，写 film.json）
-bash scripts/build.sh ~/Desktop/film-xxx --sheet-only      # 先只出 16 格拼图看画面（约 20 秒）
-bash scripts/build.sh ~/Desktop/film-xxx                   # 检查 → 配乐 → 渲染 → 混音 → 拼图（30 秒片约 2 分钟）
+bash scripts/new_film.sh ~/Desktop/知识短片/<片名>                # 建工程（放 brief.json，写 film.json）
+bash scripts/build.sh ~/Desktop/知识短片/<片名> --sheet-only      # 先只出 16 格拼图看画面（约 20 秒）
+bash scripts/build.sh ~/Desktop/知识短片/<片名>                   # 检查 → 配乐 → 渲染 → 混音 → 拼图（30 秒片约 2 分钟）
 ```
+
+片子工程一律放在 `~/Desktop/知识短片/` 下面，一条片一个子文件夹；不要直接在桌面上建，用户会觉得桌面被弄乱。
 
 `build.sh` 第一步跑 `check_film.py`，有错误（标点、太长、数字没出处或 brief 里找不到、联系方式和诱导话术、收入承诺、内部用语上屏、句数不对……）就停，改完再跑。
 拼图截的是每句播到一半的那一帧（`scripts/sheet_times.py`），不会截在换句的瞬间。

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 从模板建一个片子工程：bash scripts/new_film.sh ~/Desktop/film-被裁之后
+# 从模板建一个片子工程：bash scripts/new_film.sh ~/Desktop/知识短片/被裁之后
 # 工程里只有自己的东西（brief.json、film.json、成片）；引擎和字体留在技能目录，render.py 自己挂进来。
 set -euo pipefail
 SKILL="$(cd "$(dirname "$0")/.." && pwd)"

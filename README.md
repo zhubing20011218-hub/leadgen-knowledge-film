@@ -44,8 +44,8 @@ bash ~/.dsh/skills/leadgen-knowledge-film/scripts/setup.sh      # 建 .venv、�
 ```bash
 S=~/.dsh/skills/leadgen-knowledge-film
 echo "DEEPSEEK_API_KEY=你的钥匙" > $S/.env && chmod 600 $S/.env     # .env 不会进 git
-mkdir -p ~/Desktop/film-demo && cp $S/examples/01-被裁之后/brief.json ~/Desktop/film-demo/
-python3 $S/scripts/ds_make.py ~/Desktop/film-demo            # 写 → 检查 → 看图评审 → 改；加 --render 连整片一起出
+mkdir -p ~/Desktop/知识短片/film-demo && cp $S/examples/01-被裁之后/brief.json ~/Desktop/知识短片/film-demo/
+python3 $S/scripts/ds_make.py ~/Desktop/知识短片/film-demo            # 写 → 检查 → 看图评审 → 改；加 --render 连整片一起出
 ```
 
 实测（deepseek-flash，空闲时段）：30 秒一条约 ¥0.03，60 秒约 ¥0.05；工作日白天高峰翻倍。每条默认最多花 ¥0.5，账在 `review/cost.json`。
