@@ -161,6 +161,10 @@ def main():
             err.append(f"{tag}（{ty}）屏上有数字，但没有 note 写出处（真实来源 / 示例 / 示意）")
         if brief.get("example") and has_num and any(notes) and not any(n and re.search("示例|示意", n) for n in notes):
             err.append(f"{tag} brief 标了 example（数字不是真实数据），note 必须写「示例」或「示意」")
+    for a, b in zip(shots, shots[1:]):   # 连着几镜逐条讲同一组岔路：每镜的 paths 要一模一样，只改 focus
+        da, db = a["shot"], b["shot"]
+        if da.get("type") == db.get("type") == "fork" and da.get("focus") is not None and db.get("focus") is not None and da.get("paths") != db.get("paths"):
+            warn.append(f"{b['tag']} 和上一镜是同一组岔路，但 paths 写得不一样（前后会对不上）：照抄上一镜的 paths，只改 focus")
     every = list(strings(film)) + [str(ln.get("text", "")) for ln in lines]
     for x in every:
         for name, pat, is_err in (("联系方式或诱导互动", CONTACT, True), ("收入承诺", PROMISE, True), ("内部用语", INTERNAL, True), ("绝对化用语", ABSOLUTE, False)):

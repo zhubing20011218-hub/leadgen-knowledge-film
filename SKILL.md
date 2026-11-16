@@ -73,7 +73,7 @@ bash scripts/setup.sh             # 缺东西就跑一次：建 .venv、装 play
 ```bash
 bash scripts/new_film.sh ~/Desktop/film-xxx                # 建工程（放 brief.json，写 film.json）
 bash scripts/build.sh ~/Desktop/film-xxx --sheet-only      # 先只出 16 格拼图看画面（约 20 秒）
-bash scripts/build.sh ~/Desktop/film-xxx                   # 检查 → 配乐 → 渲染 → 混音 → 拼图（30 秒片约 6 分钟）
+bash scripts/build.sh ~/Desktop/film-xxx                   # 检查 → 配乐 → 渲染 → 混音 → 拼图（30 秒片约 2 分钟）
 ```
 
 `build.sh` 第一步跑 `check_film.py`，有错误（标点、太长、数字没出处或 brief 里找不到、联系方式和诱导话术、收入承诺、内部用语上屏、句数不对……）就停，改完再跑。

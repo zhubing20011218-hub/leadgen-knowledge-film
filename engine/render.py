@@ -15,7 +15,7 @@
 工程目录里只需要 index.html + film.js。引擎（vk.js、vk-kit.js、fonts/）留在本文件所在目录，
 由内置的小服务器挂到 /engine/ 下 —— 不用往每个工程里拷 40MB 字体，也没有 file:// 的跨目录字体限制。
 """
-import functools, hashlib, http.server, io, json, random, subprocess, sys, threading
+import base64, functools, hashlib, http.server, io, json, random, subprocess, sys, threading
 from pathlib import Path
 
 ENGINE = Path(__file__).resolve().parent
@@ -41,7 +41,8 @@ def serve(proj, port=0):
 
 def open_page(p, url):
     # 关掉 LCD 次像素抗锯齿（跳着 seek 字边不抖）；每帧等合成器跑完再截；固定 sRGB
-    args = ["--disable-lcd-text", "--run-all-compositor-stages-before-draw", "--force-color-profile=srgb"]
+    # 画布用软件绘制：显卡绘制偶尔有 1 级的舍入差，同一帧两次渲出来不完全一样（11-16 实测）
+    args = ["--disable-lcd-text", "--run-all-compositor-stages-before-draw", "--force-color-profile=srgb", "--disable-accelerated-2d-canvas", "--disable-gpu"]
     try: b = p.chromium.launch(channel="chrome", args=args)            # 优先用本机 Chrome
     except Exception: b = p.chromium.launch(args=args)                 # 没装 Chrome：用 playwright 自带的 Chromium
     pg = b.new_page(viewport={"width": 1080, "height": 1920}, device_scale_factor=1)
@@ -52,8 +53,9 @@ def open_page(p, url):
     return b, pg
 
 def shot(pg, t):
-    pg.evaluate(f"seek({t})")
-    return pg.screenshot(type="png")
+    # 直接从画布导出 PNG，不走浏览器截图：和截图逐像素一样（实测最大差 0），一帧从约 535ms 降到约 100ms
+    url = pg.evaluate(f"(seek({t}), document.getElementById('stage').toDataURL('image/png'))")
+    return base64.b64decode(url.split(",", 1)[1])
 
 def with_page(proj, fn):
     from playwright.sync_api import sync_playwright

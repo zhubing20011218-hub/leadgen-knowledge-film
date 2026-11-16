@@ -39,7 +39,7 @@ function fit(fr, str, font, max, width, track = 0) {
 }
 
 function forkFocus(fr, c, paths, f) {
-  const n = paths.length, ox = CX, oy = 1300, cy = 640, cw = Math.min(300, (CW - 30 * (n - 1)) / n), ch = 170;
+  const n = paths.length, ox = CX, oy = 960, cy = 640, cw = Math.min(300, (CW - 30 * (n - 1)) / n), ch = 170;   // 路收短一点，下面留给放大的那行字
   const xs = paths.map((_, i) => X0 + cw / 2 + i * (CW - cw) / Math.max(n - 1, 1)), k = E.out3(seg(c.lt, 0, 0.35)), kf = E.out3(seg(c.lt, 0.15, 0.5));
   fr.spark(ox, oy, 8, c.col, k);
   paths.forEach((p, i) => {
@@ -52,7 +52,11 @@ function forkFocus(fr, c, paths, f) {
     });
   });
   const p = paths[f] || {};   // 下方放大讲这一条
-  if (p.sub) fr.text(p.sub, CX, 1010 + (1 - kf) * 20, { font: 'sansh', size: fit(fr, p.sub, 'sansh', 72, CW), color: INK.white, a: kf, glow: 20, glowColor: c.col });
+  if (p.sub) {
+    const sz = fit(fr, p.sub, 'sansh', 72, CW - 120), w = fr.measure(p.sub, { font: 'sansh', size: sz }) + 100, y = 1130 + (1 - kf) * 20;
+    card(fr, CX - w / 2, y - sz * 0.9, w, sz * 1.8, c.col, { a: kf, edge: 0.6, glow: 16, r: 20 });
+    fr.text(p.sub, CX, y, { font: 'sansh', size: sz, color: INK.white, a: kf, glow: 20, glowColor: c.col });
+  }
 }
 
 const SCENES = {
