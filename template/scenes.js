@@ -61,6 +61,50 @@ function forkFocus(fr, c, paths, f) {
 
 const SCENES = {
 
+  /* 一个东西：{icon, label?, sub?, count?: 30, unit?: '份', state?: 'no'|'ok'}
+   * 不写 count：一个大图标，下面名字；写了 count：一片小图标一个个冒出来，旁边数字跟着数（"投了 30 份简历"） */
+  object(fr, c) {
+    const d = c.d, n = Math.min(60, Math.max(0, Number(d.count) || 0)), k = E.out3(seg(c.lt, 0, 0.4));
+    if (!n) {
+      const fl = Math.sin(c.lt * 2.2) * 8;
+      fr.glow(CX, 760, 340, c.col, 0.12 * k);
+      drawIcon(fr, d.icon, CX, 740 + fl, 480, c.col, k, E.out3(seg(c.lt, 0.5, 0.8)) > 0.5 ? d.state : null);
+      if (d.label) fr.text(d.label, CX, 1100, { font: 'sansh', size: fit(fr, d.label, 'sansh', 80, CW), color: INK.white, a: E.out3(seg(c.lt, 0.2, 0.55)), glow: 16, glowColor: c.col });
+      if (d.sub) fr.text(d.sub, CX, 1195, { font: 'sansh', size: 44, color: INK.text, a: E.out3(seg(c.lt, 0.35, 0.7)) });
+      return;
+    }
+    const cols = n <= 4 ? n : n <= 12 ? 4 : n <= 30 ? 6 : 8, rows = Math.ceil(n / cols);
+    const cell = Math.min(CW / cols, 640 / rows), x0 = CX - (cols - 1) * cell / 2, y0 = 760 - (rows - 1) * cell / 2;
+    const span = Math.min(c.bar * 0.6, 0.06 * n + 0.3), shown = Math.round(n * E.out2(seg(c.lt, 0.1, 0.1 + span)));
+    for (let i = 0; i < n; i++) {
+      const ki = E.out3(seg(c.lt, 0.1 + span * i / n, 0.1 + span * i / n + 0.25));
+      drawIcon(fr, d.icon, x0 + (i % cols) * cell, y0 + Math.floor(i / cols) * cell, cell * 0.78, c.col, ki, i === n - 1 && seg(c.lt, 0.1 + span, 0.5 + span) > 0.5 ? d.state : null);
+    }
+    const lab = String(shown) + (d.unit || '');
+    fr.text(lab, CX, y0 + rows * cell - cell / 2 + 130, { font: 'sansh', size: 110, color: INK.white, a: k, glow: 26, glowColor: c.col });
+    if (d.label) fr.text(d.label, CX, y0 + rows * cell - cell / 2 + 230, { font: 'sansh', size: 44, color: INK.text, a: k });
+  },
+
+  /* 从 A 到 B：{from:{icon,label,sub}, to:{icon,label,sub}, via?:{icon,label}} —— 第一句出 A，第二句（只有一句就第三拍）
+   * 光点带着 via 沿弧线走到 B（"工厂 → 轮船 → 越南""国内 → 海外"） */
+  flow(fr, c) {
+    const d = c.d, A = d.from || {}, Bp = d.to || {}, V = d.via, tr = c.span > 1 ? c.bar : c.beat * 2;
+    const ax = 280, ay = 640, bx = 800, by = 1080;
+    const ka = E.out3(seg(c.lt, 0, 0.4)), km = E.io3(seg(c.lt, tr, tr + 0.9)), kb = E.out3(seg(c.lt, tr + 0.6, tr + 1.0));
+    const pt = u => [lerp(ax, bx, u) + Math.sin(u * Math.PI) * 140, lerp(ay, by, u) - Math.sin(u * Math.PI) * 60];
+    const pts = []; for (let i = 0; i <= 40; i++) pts.push(pt(i / 40));
+    fr.poly(pts, { color: c.col, w: 3, a: 0.25 * ka, dash: [10, 12] });
+    fr.poly(pts, { color: c.col, w: 4, k: km, glow: 14 });
+    drawIcon(fr, A.icon, ax, ay, 220, c.col, ka);
+    if (A.label) fr.text(A.label, ax, ay + 160, { font: 'sansh', size: 50, color: INK.white, a: ka });
+    if (A.sub) fr.text(A.sub, ax, ay + 220, { font: 'sans', size: 32, color: INK.dim, a: ka });
+    if (km > 0 && km < 1) { const [x, y] = pt(km); if (V && V.icon) drawIcon(fr, V.icon, x, y - 70, 130, c.alt, 1); fr.spark(x, y, 8, c.col, 1); }
+    if (V && V.label && km > 0) fr.text(V.label, pt(0.5)[0] + 150, pt(0.5)[1] - 20, { font: 'sansh', size: 36, color: c.alt, a: Math.min(1, km * 3) });
+    drawIcon(fr, Bp.icon, bx, by, 240, c.col, kb);
+    if (Bp.label) fr.text(Bp.label, bx, by + 170, { font: 'sansh', size: 54, color: c.col, a: kb, glow: 16 });
+    if (Bp.sub) fr.text(Bp.sub, bx, by + 232, { font: 'sans', size: 32, color: INK.dim, a: kb });
+  },
+
   /* 片名卡：{kicker?, top, big, bottom} —— 左对齐，big 是全片最大的字 */
   title(fr, c) {
     const d = c.d, lt = c.lt, Y = 860;
@@ -184,6 +228,7 @@ const SCENES = {
         fr.line(xs[i], y + (up ? -30 : 30), xs[i], y + (up ? -70 : 70), { color: colr, w: 2, a: 0.5 * k });
         fr.text(nd.label, xs[i], y + (up ? -110 : 110), { font: 'sansh', size: fit(fr, nd.label, 'sansh', 58, (CW / Math.max(n - 1, 1)) * 1.6), color: lost ? '#6A7088' : INK.white, a: k });
         if (nd.sub) fr.text(nd.sub, xs[i], y + (up ? -178 : 176), { font: 'mono', size: 38, color: lost ? '#555A70' : c.col, a: k, glow: lost ? 0 : 10 });
+        if (nd.icon) drawIcon(fr, nd.icon, xs[i], y + (up ? -280 : 280), 110, lost ? '#5A6075' : c.col, k);
       });
     });
     if (kb > 0) fr.flash(0.18 * (1 - seg(c.lt, bt, bt + 0.3)), red);
@@ -225,6 +270,7 @@ const SCENES = {
     card(fr, X0, y, CW, h, c.col, { a: k1, edge: 0.35 });
     fr.text(L.label || '', X0 + 50, y + 80, { font: 'sansh', size: 40, track: 3, color: INK.text, align: 'l', a: k1 });
     const ls = fit(fr, String(L.value), 'sansh', 110, CW * 0.4);
+    if (L.icon) drawIcon(fr, L.icon, X0 + 120, y - 110, 150, c.col, k1);
     fr.text(String(L.value || ''), X0 + 50, y + 190, { font: 'sansh', size: ls, color: INK.white, align: 'l', a: k1 });
     if (L.sub) fr.text(L.sub, X0 + 50, y + 280, { font: 'sans', size: 32, color: INK.dim, align: 'l', a: k1 });
     const ax0 = X0 + 60, ax1 = XR - 60, ay = y + 360;
@@ -233,6 +279,7 @@ const SCENES = {
     if (ka >= 1) fr.poly([[ax1 - 18, ay - 12], [ax1, ay], [ax1 - 18, ay + 12]], { color: c.col, w: 3, glow: 10 });
     fr.text(R.label || '', XR - 50, y + 80, { font: 'sansh', size: 40, track: 3, color: INK.text, align: 'r', a: k2 });
     const rs = fit(fr, String(R.value), 'sansh', 130, CW * 0.45);
+    if (R.icon) drawIcon(fr, R.icon, XR - 120, y - 110, 150, c.col, k2);
     fr.text(String(R.value || ''), XR - 50, y + 190 + (1 - k2) * 20, { font: 'sansh', size: rs, color: c.col, align: 'r', a: k2, glow: 30 });
     if (R.sub) fr.text(R.sub, XR - 50, y + 280, { font: 'sans', size: 32, color: INK.dim, align: 'r', a: k2 });
     if (d.badge && kb > 0) fr.g({ at: [CX, y + h + 120], s: lerp(1.3, 1, kb) }, () => {
@@ -256,7 +303,8 @@ const SCENES = {
       fr.rect(X0, y - bx / 2, bx, bx, { r: 14 * q, color: col, w: 3, a: k, glow: ok && hot ? 16 : 0, fill: INK.card, fa: 0.7 * k });
       if (ok) fr.poly([[X0 + 16 * q, y + 2 * q], [X0 + 30 * q, y + 18 * q], [X0 + 54 * q, y - 16 * q]], { color: col, w: 6 * q, k: kt, glow: 14 });
       else fr.line(X0 + 18 * q, y, X0 + (18 + 32 * kt) * q, y, { color: col, w: 6 * q });
-      const tx = X0 + bx + 32, ts = Math.min(fs, fit(fr, r.text, 'sansh', fs, XR - tx - (r.note ? 200 : 0)));
+      if (r.icon) drawIcon(fr, r.icon, X0 + bx + 32 + bx * 0.45, y, bx * 0.9, ok ? col : '#6A7088', k);
+      const tx = X0 + bx + 32 + (r.icon ? bx + 20 : 0), ts = Math.min(fs, fit(fr, r.text, 'sansh', fs, XR - tx - (r.note ? 200 : 0)));
       fr.text(r.text, tx, y, { font: 'sansh', size: ts, color: ok ? (hot ? INK.white : INK.text) : '#6A7088', align: 'l', a: k });
       if (!ok) fr.line(tx - 4, y, tx + 4 + fr.measure(r.text, { font: 'sansh', size: ts }) * kt, y, { color: '#6A7088', w: 3, a: k });
       if (r.note) fr.text(r.note, XR, y, { font: 'sansh', size: big ? 38 : 30, color: ok ? c.col : '#6A7088', align: 'r', a: k * (hot ? 1 : 0.7) });
@@ -290,8 +338,11 @@ const SCENES = {
       const a0 = at(c, i, n), kk = E.out3(seg(c.lt, a0, a0 + 0.4)); if (kk <= 0) return;
       const t = -Math.PI / 2 + Math.PI * 2 * i / n, x = CX + Math.cos(t) * R, y = cy + Math.sin(t) * R, hot = i === act;
       fr.circle(x, y, 78 * lerp(0.6, 1, kk) * (hot ? 1.08 : 1), { fill: INK.card, fa: 0.95, color: hot ? c.col : c.alt, w: 3, a: kk, glow: hot ? 26 : 0 });
-      fr.text(nd.label, x, y - (nd.sub ? 14 : 0), { font: 'sansh', size: fit(fr, nd.label, 'sansh', 40, 130), color: hot ? c.col : INK.white, a: kk });
-      if (nd.sub) fr.text(nd.sub, x, y + 28, { font: 'sansr', size: 22, color: INK.dim, a: kk });
+      if (nd.icon) { drawIcon(fr, nd.icon, x, y - 4, 92, hot ? c.col : c.alt, kk); fr.text(nd.label, x, y + 110, { font: 'sansh', size: fit(fr, nd.label, 'sansh', 40, 200), color: hot ? c.col : INK.white, a: kk }); }
+      else {
+        fr.text(nd.label, x, y - (nd.sub ? 14 : 0), { font: 'sansh', size: fit(fr, nd.label, 'sansh', 40, 130), color: hot ? c.col : INK.white, a: kk });
+        if (nd.sub) fr.text(nd.sub, x, y + 28, { font: 'sansr', size: 22, color: INK.dim, a: kk });
+      }
     });
   },
 
@@ -304,9 +355,16 @@ const SCENES = {
       const a0 = at(c, i, n), k = E.out3(seg(c.lt, a0, a0 + 0.4)); if (k <= 0) return;
       const x = X0 + (i % cols) * (gw + 30), y = y0 + Math.floor(i / cols) * (gh + 30), hot = i === act || i === d.pick;
       card(fr, x, y, gw, gh, hot ? c.col : '#5A6075', { a: k * (hot ? 1 : 0.5), edge: hot ? 0.9 : 0.4, glow: hot ? 22 : 0 });
-      fr.text(it.name, x + 34, y + 58, { font: 'sansh', size: fit(fr, it.name, 'sansh', 46, gw - 140), color: hot ? c.col : INK.text, align: 'l', a: k, glow: hot ? 14 : 0 });
-      if (it.tag) fr.text(it.tag, x + gw - 30, y + 58, { font: 'sans', size: 26, color: INK.dim, align: 'r', a: k });
-      (it.rows || []).slice(0, 3).forEach((r, j) => fr.text(r, x + 34, y + 122 + j * 44, { font: 'sansr', size: 30, color: hot ? INK.text : INK.dim, align: 'l', a: k * (hot ? 1 : 0.6) }));
+      if (it.icon) {   // 有图标：图标大、居中在上，名字在下
+        const is = Math.min(gh * 0.5, gw * 0.42);
+        drawIcon(fr, it.icon, x + gw / 2, y + gh * 0.38, is, hot ? c.col : '#8A90A8', k);
+        fr.text(it.name, x + gw / 2, y + gh * 0.8, { font: 'sansh', size: fit(fr, it.name, 'sansh', 44, gw - 40), color: hot ? c.col : INK.text, a: k, glow: hot ? 14 : 0 });
+        if (it.tag) fr.text(it.tag, x + gw - 24, y + 36, { font: 'sans', size: 24, color: INK.dim, align: 'r', a: k });
+      } else {
+        fr.text(it.name, x + 34, y + 58, { font: 'sansh', size: fit(fr, it.name, 'sansh', 46, gw - 140), color: hot ? c.col : INK.text, align: 'l', a: k, glow: hot ? 14 : 0 });
+        if (it.tag) fr.text(it.tag, x + gw - 30, y + 58, { font: 'sans', size: 26, color: INK.dim, align: 'r', a: k });
+        (it.rows || []).slice(0, 3).forEach((r, j) => fr.text(r, x + 34, y + 122 + j * 44, { font: 'sansr', size: 30, color: hot ? INK.text : INK.dim, align: 'l', a: k * (hot ? 1 : 0.6) }));
+      }
     });
   },
 };

@@ -12,8 +12,8 @@ command -v ffmpeg >/dev/null || { echo "缺 ffmpeg"; exit 2; }
 $PY "$SKILL/engine/get_fonts.py" --check >/dev/null || $PY "$SKILL/engine/get_fonts.py"
 
 # 工程里的模板是建工程时拷的；技能升级后旧工程不会自己变。--update-template 换成技能里最新的（工程里自己写的件会被覆盖）
-if [ "${2:-}" = "--update-template" ]; then cp "$SKILL/template/"{index.html,palette.js,film.js,scenes.js} "$P/"; echo "模板已换成技能里最新的"; set -- "$1"; fi
-for f in index.html palette.js film.js scenes.js; do
+if [ "${2:-}" = "--update-template" ]; then cp "$SKILL/template/"{index.html,palette.js,icons.js,film.js,scenes.js} "$P/"; echo "模板已换成技能里最新的"; set -- "$1"; fi
+for f in index.html palette.js icons.js film.js scenes.js; do
   cmp -s "$SKILL/template/$f" "$P/$f" || { echo "提醒：$P/$f 和技能里的模板不一样（技能升级过，或者你改过）。要换成最新的：bash $SKILL/scripts/build.sh $P --update-template"; break; }
 done
 BRIEF=""; [ -f "$P/brief.json" ] && BRIEF="$P/brief.json"

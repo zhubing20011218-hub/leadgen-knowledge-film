@@ -108,6 +108,8 @@ REVIEW_SYS = """你是竖屏知识短片的严格评审。给你一张拼图：�
 5. 开头三格能不能让人停下来？结尾有没有给出下一步？
 不要报：配色风格、霓虹发光、字体（这些是固定的样式）；不要客套。
 改法不许：编 brief 里没有的数字、加联系方式或"扣1 / 领资料 / 私我"这类诱导互动的话、承诺收入；结尾的下一步只能是主页 / 合集 / 评论区。
+改法只能用现有的件：title statement number bars ring timeline fork(可加 focus) compare checklist steps cycle cards object flow；
+"缺一样认得出的东西"就建议 object（一堆写 count）或给条目加 icon，图标只能从这些里选：{ICONS}。
 每个问题归一类：
 - content：改 film.json 就能解决（换一个件、删几条、缩短一段字、加 head、拆成两镜……），fix 写清楚怎么改；
 - engine：画面件自己画坏了（越界、重叠这类排版 bug），改 film.json 解决不了。
@@ -130,6 +132,10 @@ def plan_lines(brief):
         return bpm, n, f"bpm 写 {bpm}。这条片必须正好 {n} 句字幕（写完数一遍），按商量好的结构分 {max(3, n // 4)}–{max(4, n // 3)} 章，每章 2–5 句。"
     lines = "；".join(f"{b} {c} 句" for (b, _), c in zip(BEATS, cnt))
     return bpm, n, f"bpm 写 {bpm}。这条片必须正好 {n} 句字幕（写完数一遍）。按六拍分：{lines}。每拍是 1–2 章，每章 2–5 句。"
+
+
+ICON_NAMES = " ".join(re.findall(r"^  (\w+)\(fr, c\)", (SKILL / "template/icons.js").read_text(encoding="utf-8"), re.M))
+REVIEW_SYS = REVIEW_SYS.replace("{ICONS}", ICON_NAMES)
 
 
 def mid_times(proj):

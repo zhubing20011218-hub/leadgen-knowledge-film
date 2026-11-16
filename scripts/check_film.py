@@ -18,12 +18,15 @@ TYPES = {   # 件名: (必填字段, {列表字段: (最少, 最多)})
     "steps": (["rows"], {"rows": (1, 5)}),
     "cycle": (["nodes"], {"nodes": (3, 6)}),
     "cards": (["items"], {"items": (2, 6)}),
+    "object": (["icon"], {}),
+    "flow": (["from", "to"], {}),
 }
+ICONS = set("phone laptop resume person people bed desk factory box ship plane globe money coins chartup chartdown clock calendar cart store chat ai video house briefcase".split())   # 和 template/icons.js 一致
 # 字幕里允许的字：汉字、字母、数字、空格和少数数字符号；其余标点一律不许（字幕不带标点）
 SUB_OK = re.compile(r"^[一-鿿㐀-䶿A-Za-z0-9 %+×¥$/.]+$")
 CONTACT = r"微信|vx|VX|加我|私信我|联系方式|电话|二维码|QQ|扣扣|wx号|链接在评论|扣 ?1|扣 ?666|领资料|领取|免费送|私我"   # 后几个是诱导互动 / 导流话术，平台会限流
 PROMISE = r"月入|日入|年入|稳赚|躺赚|包赚|保证赚|一定赚|回本|暴富|财务自由|零风险|稳挣|零成本|零门槛|不用本钱|不要本钱|不花一分钱"
-INTERNAL = r"不含联系方式|访谈|brief|作者本人账目|SOP|skill|DeepSeek|Claude|提示词|分镜|示例数据来自"
+INTERNAL = r"不含联系方式|访谈|\bbrief\b|作者本人账目|SOP|skill|DeepSeek|Claude|提示词|分镜|示例数据来自"
 ABSOLUTE = r"最好|最强|第一|唯一|100%|绝对|永远"
 NUM = re.compile(r"\d")
 
@@ -58,17 +61,30 @@ def capacity(d):
     ty = d.get("type"); L = lambda k: len(d.get(k) or [])
     return {"title": 1, "statement": 1, "number": max(1, L("values")), "bars": L("rows"), "ring": 1 + L("rows"),
             "timeline": 2 if d.get("breakAt") is not None else 1, "fork": 1 if d.get("focus") is not None else max(2, L("paths")), "compare": 2,
-            "checklist": L("rows"), "steps": L("rows"), "cycle": L("nodes"), "cards": L("items")}.get(ty, 1)
+            "checklist": L("rows"), "steps": L("rows"), "cycle": L("nodes"), "cards": L("items"), "object": 1, "flow": 2}.get(ty, 1)
+
+
+def icon_fields(o, path="shot"):   # 找出所有 icon 字段
+    if isinstance(o, dict):
+        for k, v in o.items():
+            if k == "icon": yield f"{path}.icon", v
+            else: yield from icon_fields(v, f"{path}.{k}")
+    elif isinstance(o, list):
+        for i, v in enumerate(o): yield from icon_fields(v, f"{path}[{i}]")
 
 
 def width(s):   # 估算一行字幕的宽度（一个汉字 = 1）
     return sum(1 if "㐀" <= ch <= "鿿" else 0.3 if ch == " " else 0.58 for ch in s)
 
 
+HIDDEN = {"icon", "type", "color"}   # 这些字段不上屏（图标名、件名、颜色名），不拿来查屏上用语
+
+
 def strings(o):
     if isinstance(o, str): yield o
     elif isinstance(o, dict):
-        for v in o.values(): yield from strings(v)
+        for k, v in o.items():
+            if k not in HIDDEN: yield from strings(v)
     elif isinstance(o, list):
         for v in o: yield from strings(v)
 
@@ -91,7 +107,7 @@ def main():
         if re.search(r"[\u4e00-\u9fff]", str(ch.get("en", ""))): err.append(f"{tag} en 只能写英文")
         ls = ch.get("lines") or []
         if not ls: err.append(f"{tag} 没有字幕"); continue
-        if not ls[0].get("shot"): err.append(f"{tag} 第一句必须带 shot（每章开一个新镜）")
+        if not ls[0].get("shot"): err.append(f"{tag} 第一句必须带 shot（每章开一个新镜），比如 \"shot\": {{\"type\": \"statement\", \"big\": \"两到六个字\"}}")
         for ln in ls:
             n = len(lines) + 1
             if ln.get("shot"): shots.append({"shot": ln["shot"], "lines": [], "tag": f"第{n}句起的镜"})
@@ -99,8 +115,10 @@ def main():
             lines.append(ln)
             t = str(ln.get("text", "")).strip()
             if not t: err.append(f"第{n}句 没有字"); continue
-            if not SUB_OK.match(t): err.append(f"第{n}句「{t}」有标点或怪字符（字幕不带标点，用空格断开）")
-            if width(t) > 16.5: err.append(f"第{n}句「{t}」太长（约 {width(t):.1f} 字，上限 16，一眼读不完）")
+            if not SUB_OK.match(t):
+                fix = re.sub(r" +", " ", re.sub(r"[^\u4e00-\u9fff\u3400-\u4dbfA-Za-z0-9 %+×¥$/.]", " ", t)).strip()
+                err.append(f"第{n}句「{t}」有标点或怪字符（字幕不带标点，用空格断开）。改成：「{fix}」")
+            if width(t) > 16.5: err.append(f"第{n}句「{t}」太长（约 {width(t):.1f} 字，上限 16，一眼读不完）：删掉修饰词，或拆成两句（拆了句数会变，别的地方删一句）")
             for w in ln.get("hl") or []:
                 if w not in t: err.append(f"第{n}句 高亮词「{w}」不在字幕里")
             if len(ln.get("hl") or []) > 2: warn.append(f"第{n}句 高亮超过 2 处，重点会散")
@@ -121,6 +139,9 @@ def main():
         if ty == "fork" and d.get("pick") is not None and not (0 <= int(d["pick"]) < len(d.get("paths") or [])): err.append(f"{tag} pick 超出 paths 范围")
         if ty == "timeline" and d.get("breakAt") is not None and not (0 <= int(d["breakAt"]) < len(d.get("nodes") or []) - 1): err.append(f"{tag} breakAt 要小于节点数 - 1")
         if ty == "timeline" and d.get("breakStep") is not None and int(d["breakStep"]) >= len(s["lines"]): err.append(f"{tag} breakStep={d['breakStep']} 但这一镜只有 {len(s['lines'])} 句，裂不到")
+        for pth, v in [(p, v) for p, v in icon_fields(d)]:
+            if v not in ICONS: err.append(f"{tag} {pth} 的图标「{v}」没有，只能用：{' '.join(sorted(ICONS))}")
+        if ty == "object" and d.get("count") is not None and not (2 <= int(d["count"]) <= 60): err.append(f"{tag} object 的 count 要 2–60（一个就别写 count）")
         span, cap = len(s["lines"]), capacity(d)
         if span > cap:
             msg = f"{tag}（{ty}）有 {span} 句，但这个件只能变 {cap} 次：后面 {span - cap} 句画面不动。拆成两镜，或给它加条目（rows / values / nodes）"

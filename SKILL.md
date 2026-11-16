@@ -5,7 +5,7 @@ description: >
   霓虹章节风格（顶栏章节 + 进度、每章一个主色、大标题大数字、关键词染色）。第一件事永远是先问需求。
   推荐的叙事骨架是"人生节点 → 断裂 → 分叉 → 收窄 → 出路 → 行动"，把当下裁员、迷茫的情绪接住，再给一条能走的路；
   出路默认是跨境电商，也可以是用户自己的业务或别的方向，结构也可以和用户商量着改。
-  模型只写一份 film.json（字幕 + 每一镜用哪个画面件），画面由自带的 12 个件画，所以用 DeepSeek 这类便宜模型也能稳定出片。
+  模型只写一份 film.json（字幕 + 每一镜用哪个画面件），画面由自带的 14 个件和 25 个图标画，所以用 DeepSeek 这类便宜模型也能稳定出片。
   用户说"做一条引流的视频""讲失业 / 裁员 / 转行 / 迷茫""为什么做跨境电商""电商 + AI""知识短片""卡点视频"
   "没有旁白的科普短视频""像 Vibe 知识大赏那种片"，或者给了一个主题、一段经历、一组数据要做成竖屏短片时使用。
 ---
@@ -63,10 +63,10 @@ bash scripts/setup.sh             # 缺东西就跑一次：建 .venv、装 play
 
 - 一句字幕 = 一小节（默认 112 BPM，一句 2.14 秒）：30 秒 14 句、60 秒 28 句、90 秒 42 句；
 - 字幕不带标点、≤ 16 字、一句只说一件事，0–2 个关键词染色；
-- 一章一个主画面（12 个件选一个），撑 2–4 句，一句往上加一样东西；
+- 一章一个主画面（14 个件选一个），撑 2–4 句，一句往上加一样东西；
 - 每个数字写出处（note）；反转那一章标 `"turn": true`。
 
-**只写 film.json，不写画面代码。** 12 个件真的不够用时才写新件（03 最后一节）。
+**只写 film.json，不写画面代码。** 14 个件真的不够用时才写新件（03 最后一节）。
 
 ## 3. 出片
 
@@ -109,11 +109,11 @@ bash scripts/build.sh ~/Desktop/film-xxx                   # 检查 → 配乐 �
 SKILL.md                         本文件
 references/01-需求访谈.md         七问的问法、追问、反例、brief.json 格式
 references/02-引流叙事骨架.md     六拍骨架、四种角度、60/90 秒怎么拆、写坏的样子
-references/03-分镜与画面件.md     film.json 格式、12 个件、怎么选件、怎么写新件
+references/03-分镜与画面件.md     film.json 格式、14 个件、25 个图标、怎么选件、怎么写新件
 references/04-配乐与卡点.md       一句一小节、自动配乐、用户自己的配乐、混音规格
 references/05-检查表.md           机器检查 + 人看三条 + 交付清单
 references/06-合规红线.md         平台和法律边界、可替换的说法
-template/                        画面模板：film.js（播放器）scenes.js（12 个件）palette.js（章节色）
+template/                        画面模板：film.js（播放器）scenes.js（14 个件）icons.js（25 个图标）palette.js（章节色）
 engine/                          渲染引擎（MIT，来源见 LICENSE-THIRD-PARTY.md）；字体下载到 engine/fonts/
 scripts/                         env_check.py / setup.sh / new_film.sh / build.sh / ds_make.py（DeepSeek 全自动）/ check_film.py / validate_brief.py / sheet_times.py / make_cues.mjs / score.mjs
 examples/01-被裁之后/             示例：brief.json（数字是示例）+ film.json

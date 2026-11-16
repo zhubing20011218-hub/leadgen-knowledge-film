@@ -6,7 +6,7 @@ SKILL="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="${1:?用法: bash scripts/new_film.sh <目标目录>}"
 [ -e "$DEST/film.json" ] && { echo "$DEST 里已经有 film.json，不覆盖"; exit 1; }
 mkdir -p "$DEST"/{renders,review,scripts}
-cp "$SKILL/template/index.html" "$SKILL/template/palette.js" "$SKILL/template/film.js" "$SKILL/template/scenes.js" "$DEST/"
+cp "$SKILL/template/index.html" "$SKILL/template/palette.js" "$SKILL/template/icons.js" "$SKILL/template/film.js" "$SKILL/template/scenes.js" "$DEST/"
 cp "$SKILL/scripts/score.mjs" "$DEST/scripts/score.mjs"
 [ -e "$DEST/brief.json" ] || cp "$SKILL/examples/01-被裁之后/brief.json" "$DEST/brief.json"
 echo "建好了：$DEST"
