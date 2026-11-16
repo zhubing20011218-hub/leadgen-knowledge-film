@@ -38,8 +38,19 @@ function fit(fr, str, font, max, width, track = 0) {
   let s = max; while (s > 24 && fr.measure(str, { font, size: s, track }) > width) s -= 4; return s;
 }
 
+/* 岔路卡片的标签：一行放得下就一行（≥ 44 号字），否则从空格或中间折成两行，字号不小于一行时 */
+function pathLabel(fr, p, cw, col, a, glow) {
+  const s = String(p.label || ''), maxW = cw - 30; let parts = [s], sz = fit(fr, s, 'sansh', 52, maxW);
+  if (sz < 44 && s.length >= 5) {
+    const sp = s.indexOf(' '), h = sp > 0 ? sp : Math.ceil(s.length / 2);
+    parts = [s.slice(0, h).trim(), s.slice(h).trim()]; sz = Math.min(52, ...parts.map(x => fit(fr, x, 'sansh', 52, maxW)));
+  }
+  const top = parts.length > 1 ? -sz * 0.95 : -22;
+  parts.forEach((x, i) => fr.text(x, 0, top + i * sz * 1.1 - (p.sub && parts.length > 1 ? 14 : 0), { font: 'sansh', size: sz, color: col, a, glow }));
+  return parts.length > 1 ? top + sz * 1.1 + sz * 0.5 + 26 : 40;   // sub 的 y
+}
 function forkFocus(fr, c, paths, f) {
-  const n = paths.length, ox = CX, oy = 960, cy = 640, cw = Math.min(300, (CW - 30 * (n - 1)) / n), ch = 170;   // 路收短一点，下面留给放大的那行字
+  const n = paths.length, ox = CX, oy = 960, cy = 640, cw = Math.min(300, (CW - 30 * (n - 1)) / n), ch = 210;   // 路收短一点，下面留给放大的那行字
   const xs = paths.map((_, i) => X0 + cw / 2 + i * (CW - cw) / Math.max(n - 1, 1)), k = E.out3(seg(c.lt, 0, 0.35)), kf = E.out3(seg(c.lt, 0.15, 0.5));
   fr.spark(ox, oy, 8, c.col, k);
   paths.forEach((p, i) => {
@@ -47,8 +58,8 @@ function forkFocus(fr, c, paths, f) {
     fr.poly(pts, { color: on ? c.col : '#8A90A8', w: on ? 5 : 2, a: on ? kf : 0.35 * k, glow: on ? 18 : 0 });
     fr.g({ at: [xs[i], cy], s: on ? lerp(1, 1.12, kf) : 1 }, () => {
       card(fr, -cw / 2, -ch / 2, cw, ch, on ? c.col : '#8A90A8', { a: k * (on ? 1 : 0.4), edge: on ? 0.9 : 0.3, glow: on ? 24 : 0 });
-      fr.text(p.label, 0, -22, { font: 'sansh', size: fit(fr, p.label, 'sansh', 48, cw - 30), color: on ? c.col : INK.text, a: k * (on ? 1 : 0.5), glow: on ? 18 : 0 });
-      if (p.sub) fr.text(p.sub, 0, 40, { font: 'sans', size: Math.min(28, fit(fr, p.sub, 'sans', 28, cw - 30)), color: INK.dim, a: k * (on ? 1 : 0.4) });
+      const sy = pathLabel(fr, p, cw, on ? c.col : INK.text, k * (on ? 1 : 0.5), on ? 18 : 0);
+      if (p.sub) fr.text(p.sub, 0, sy, { font: 'sans', size: Math.min(30, fit(fr, p.sub, 'sans', 30, cw - 30)), color: INK.dim, a: k * (on ? 1 : 0.4) });
     });
   });
   const p = paths[f] || {};   // 下方放大讲这一条
@@ -239,7 +250,7 @@ const SCENES = {
   fork(fr, c) {
     const d = c.d, paths = d.paths || [], n = paths.length, pick = d.pick != null ? Number(d.pick) : n - 1;
     if (d.focus != null) return forkFocus(fr, c, paths, Number(d.focus));
-    const ox = CX, oy = 1300, cy = 640, cw = Math.min(300, (CW - 30 * (n - 1)) / n), ch = 170;
+    const ox = CX, oy = 1300, cy = 660, cw = Math.min(300, (CW - 30 * (n - 1)) / n), ch = 210;
     const xs = paths.map((_, i) => X0 + cw / 2 + i * (CW - cw) / Math.max(n - 1, 1));
     const kills = paths.map((_, i) => i).filter(i => i !== pick);
     const killAt = i => { const j = kills.indexOf(i); if (j < 0) return 1e9; const steps = Math.max(c.span - 2, 1); return c.span <= 1 ? 0.5 + j * c.beat : (1 + Math.min(j, steps - 1)) * c.bar + Math.max(0, j - (steps - 1)) * c.beat; };
@@ -251,11 +262,10 @@ const SCENES = {
       fr.poly(pts, { color: kp > 0 ? c.col : '#8A90A8', w: kp > 0 ? 5 : 2.5, a: (0.7 - 0.45 * kx) * (kp > 0 ? 1 : 1), k, glow: kp > 0 ? 18 : 0 });
       if (k <= 0) return;
       const x = xs[i] - cw / 2, y = cy - ch / 2;
-      fr.g({ at: [xs[i], cy], s: 1 + 0.08 * kp }, () => {
+      fr.g({ at: [xs[i], cy], s: 1 + 0.12 * kp }, () => {
         card(fr, -cw / 2, -ch / 2, cw, ch, kp > 0 ? c.col : '#8A90A8', { a: k * (1 - 0.55 * kx), edge: kp > 0 ? 0.9 : 0.4, glow: kp > 0 ? 24 : 0 });
-        const ls = fit(fr, p.label, 'sansh', 48, cw - 30);
-        fr.text(p.label, 0, -22, { font: 'sansh', size: ls, color: kp > 0 ? c.col : INK.white, a: k * (1 - 0.55 * kx), glow: kp > 0 ? 18 : 0 });
-        if (p.sub) fr.text(p.sub, 0, 40, { font: 'sans', size: Math.min(28, fit(fr, p.sub, 'sans', 28, cw - 30)), color: INK.dim, a: k * (1 - 0.4 * kx) });
+        const sy = pathLabel(fr, p, cw, kp > 0 ? c.col : INK.white, k * (1 - 0.55 * kx), kp > 0 ? 18 : 0);
+        if (p.sub) fr.text(p.sub, 0, sy, { font: 'sans', size: Math.min(30, fit(fr, p.sub, 'sans', 30, cw - 30)), color: INK.dim, a: k * (1 - 0.4 * kx) });
       });
       if (kx > 0) fr.line(x + 18, cy, x + 18 + (cw - 36) * kx, cy, { color: NEON.red.main, w: 6, glow: 14 });
     });

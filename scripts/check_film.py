@@ -154,7 +154,12 @@ def main():
             if d.get(f) in (None, "", []): err.append(f"{tag}（{ty}）缺 {f}")
         for f, (lo, hi) in lists.items():
             v = d.get(f) or []
-            if not (lo <= len(v) <= hi): err.append(f"{tag}（{ty}）{f} 要 {lo}–{hi} 个，现在 {len(v)} 个")
+            if not (lo <= len(v) <= hi):
+                tip = ""
+                if len(v) < lo:
+                    tip = ("：只有一个数就别用 bars，换成 number（values 写这一个数，units 写一句说明）——bars 是几样东西比大小" if ty == "bars"
+                           else "：补齐条目，补的条目里不许编数字")
+                err.append(f"{tag}（{ty}）{f} 要 {lo}–{hi} 个，现在 {len(v)} 个{tip}")
         if ty == "number" and len(d.get("values") or []) > len(s["lines"]) + 3: warn.append(f"{tag} number 的值比句子多太多，挤在一句里会看不清")
         if ty == "bars" and any(r.get("tag") and (len(str(r["tag"])) <= 2 or str(r["tag"]) in str(d.get("unit", ""))) for r in d.get("rows") or []): warn.append(f"{tag} bars 的 tag 像是单位（单位写在 unit 里，tag 写一句补充或留空）")
         if ty == "steps" and any(re.fullmatch(r"\s*0?\d+\s*", str(r.get("note", "x"))) for r in d.get("rows") or []): warn.append(f"{tag} steps 的 note 只写了编号，编号会自动画，note 留空或写一句补充")
@@ -167,8 +172,14 @@ def main():
         if ty == "object" and d.get("count") is not None and not (2 <= int(d["count"]) <= 60): err.append(f"{tag} object 的 count 要 2–60（一个就别写 count）")
         span, cap = len(s["lines"]), capacity(d)
         if span > cap:
-            msg = f"{tag}（{ty}）有 {span} 句，但这个件只能变 {cap} 次：后面 {span - cap} 句画面不动。拆成两镜，或给它加条目（rows / values / nodes）"
+            msg = f"{tag}（{ty}）有 {span} 句，但这个件只能变 {cap} 次：后面 {span - cap} 句画面不动。让每句对上一条：第 k 条写第 k 句字幕说的东西（不许编数字、不许加字幕没说的）；后面几句说的东西这个件演不了，就从那句起开新镜"
             (err if span - cap >= 2 else warn).append(msg)
+        if ty in ("checklist", "steps", "cycle", "cards", "bars") and span >= 2:
+            said = " ".join(str(ln.get("text", "")) for ln in s["lines"])
+            items = d.get("rows") or d.get("nodes") or d.get("items") or []
+            lost = [str(x.get("text") or x.get("label") or x.get("name") or "") for x in items if isinstance(x, dict)]
+            lost = [t for t in lost if len(t) >= 2 and not any(t[i:i + 2] in said for i in range(len(t) - 1))]
+            if lost: warn.append(f"{tag}（{ty}）的条目「{'」「'.join(lost)}」这一镜的字幕里都没说：合镜时每句加的那条要是这句说的东西，字幕没说的删掉或换成字幕说的")
         if ty in ("steps", "checklist", "cards", "cycle"):
             k = len(d.get("rows") or d.get("items") or d.get("nodes") or [])
             for ln in s["lines"]:
@@ -176,6 +187,11 @@ def main():
                 if m and int(cn2num(m.group(1)) if not m.group(1).isdigit() else m.group(1)) != k:
                     err.append(f"{tag} 字幕说「{m.group(0)}」，但画面只有 {k} 条：让两边对上（改字幕里的数，或补齐条目）")
         if ty == "bars" and len({str(r.get("value")) for r in d.get("rows") or []}) == 1 and len(d.get("rows") or []) > 1: err.append(f"{tag} bars 每条的值都一样，比不出大小：换成有差别的真实数，或者换件（checklist / steps）")
+        zero = (ty == "number" and any(str(x).strip() in ("0", "0.0") for x in d.get("values") or []) and (str(d.get("prefix", "")) in ("¥", "$") or "元" in str(d.get("suffix", "")))) \
+            or any(re.search(r"[¥$]\s*0(?![.\d])|(?<![\d.])0\s*元", x) for x in strings(d)) \
+            or any(re.search(r"[¥$]\s*0(?![.\d])|(?<![\d.])0\s*元|零元", str(ln.get("text", ""))) for ln in s["lines"])
+        if zero and not re.search(r"免费|(?<![\d.])0\s*元|零元|¥\s*0(?![.\d])", json.dumps(brief, ensure_ascii=False)):
+            err.append(f"{tag} 屏上出现了 ¥0 / 0 元：等于说不花钱（零成本承诺），brief 里没有这个依据。删掉这个 0，只留 brief 里有的那个数（比如只放「请人拍一张 ¥50」）")
         notes = [d.get("note")] + [ln.get("note") for ln in s["lines"]]
         note_txt = " ".join(n for n in notes if n)
         if brief_nums is not None:
