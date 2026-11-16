@@ -111,7 +111,8 @@ REVIEW_SYS = """你是竖屏知识短片的严格评审。给你一张拼图：�
 改法只能用现有的件：title statement number bars ring timeline fork(可加 focus) compare checklist steps cycle cards object flow；
 "缺一样认得出的东西"就建议 object（一堆写 count）或给条目加 icon，图标只能从这些里选：{ICONS}。
 每个问题归一类：
-- content：改 film.json 就能解决（换一个件、删几条、缩短一段字、加 head、拆成两镜……），fix 写清楚怎么改；
+- content：改 film.json 就能解决（换一个件、删几条、缩短一段字、加 head、加图标……），fix 写清楚怎么改；
+  改法优先"在同一镜里加东西"（多一条 rows / nodes、加 icon），少用"拆成新的一镜"——一章一个主画面撑 3–4 句才连贯，一句一换会很跳；
 - engine：画面件自己画坏了（越界、重叠这类排版 bug），改 film.json 解决不了。
 只输出 JSON：{"issues":[{"line":句号(从1数),"kind":"content|engine","problem":"…","fix":"…"}],"verdict":"一句话总评"}。没问题就给空数组。"""
 
@@ -183,19 +184,25 @@ def main():
     def save(f): (proj / "film.json").write_text(json.dumps(f, ensure_ascii=False, indent=1), encoding="utf-8")
 
     def fix_loop(film, tag):
-        save(film); warned = False; last = None
-        for r in range(rounds + 1):
+        save(film); warned = False; last = None; used_pro = False
+        for r in range(rounds + 2):
             ok, out, errs, warns = check(proj)
             stuck = bool(errs) and last is not None and len(errs) >= len(last); last = errs   # 错误没减少 = 卡住
+            final = r >= rounds and errs and not used_pro and model == "deepseek-flash"   # 轮数用完还有错：最后给 pro 一次机会
+            if r > rounds or (r == rounds and not final): print("   " + out.splitlines()[0] + ("　✓" if ok else f"　✗ {len(errs)} 个错")); return film, ok
             print("   " + out.splitlines()[0] + ("　✓" if ok else f"　✗ {len(errs)} 个错"))
             todo = errs + ([] if warned else warns)
-            if (ok and (warned or not warns)) or r == rounds: return film, ok
+            if ok and (warned or not warns): return film, ok
             if ok: warned = True
-            convo.append({"role": "user", "content": "检查结果如下，照着改（只改有问题的地方，其他保持原样），输出完整 film.json：\n" + "\n".join(todo)})
-            m = "deepseek-v4-pro" if stuck and model == "deepseek-flash" else model   # 同样的错改不掉：换强一点的模型改这一轮
-            if m != model: print("   （同样的错连续两轮没改掉，这一轮换 deepseek-v4-pro）")
-            film = chat(key, base, m, convo, led, f"{tag}改第{r + 1}轮" + ("·pro" if m != model else "")); save(film)
-            convo.append({"role": "assistant", "content": json.dumps(film, ensure_ascii=False)})
+            ask_fix = "检查结果如下，照着改（只改有问题的地方，其他保持原样），输出完整 film.json：\n" + "\n".join(todo)
+            if (stuck or final) and model == "deepseek-flash" and not used_pro:
+                # 换 pro 改这一轮。pro 上没有缓存，只发说明 + brief + 当前稿 + 报错，不发前面几轮的来回（实测整段对话发过去一轮要 ¥0.2）
+                print("   （" + ("同样的错没改掉" if stuck else "轮数用完还有错") + "，这一轮换 deepseek-v4-pro）"); used_pro = True
+                film = chat(key, base, "deepseek-v4-pro", [system, ask, {"role": "assistant", "content": json.dumps(film, ensure_ascii=False)}, {"role": "user", "content": ask_fix}], led, f"{tag}改第{r + 1}轮·pro")
+            else:
+                convo.append({"role": "user", "content": ask_fix})
+                film = chat(key, base, model, convo, led, f"{tag}改第{r + 1}轮")
+            save(film); convo.append({"role": "assistant", "content": json.dumps(film, ensure_ascii=False)})
         return film, False
 
     if "--review-only" in a:   # 只评审：不改 film.json，检查结果原样列出来给助手自己改

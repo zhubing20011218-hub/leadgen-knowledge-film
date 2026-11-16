@@ -61,11 +61,14 @@ def check(b):
     pain = b.get('pain') or []
     if not (2 <= len(pain) <= 4):
         errs.append(f'pain（处境）要 2–4 句（现在 {len(pain)} 句）')
+    concrete = 0
     for i, p in enumerate(pain, 1):
         if len(p) > 30:
             errs.append(f'pain 第 {i} 句超过 30 字（现在 {len(p)} 字）')
-        if not has_person_marker(p):
-            errs.append(f'pain 第 {i} 句太抽象（「{p}」）：要写具体年龄/岗位/发生了什么')
+        if has_person_marker(p) or has_digit(p): concrete += 1
+        else: warns.append(f'pain 第 {i} 句有点抽象（「{p}」）：最好写出具体的时间、数字或发生了什么')
+    if pain and concrete < min(2, len(pain)):
+        errs.append('pain（处境）至少 2 句要具体：年龄、岗位、多久、多少钱、发生了什么（例：「38 岁，做了十年工厂管理」）')
 
     proof = b.get('proof') or []
     if not (2 <= len(proof) <= 4):

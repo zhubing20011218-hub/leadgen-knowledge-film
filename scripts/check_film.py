@@ -49,10 +49,32 @@ def numbers_in(text):
     out = set()
     for m in re.findall(r"\d+(?:\.\d+)?", text.replace(",", "")):
         v = float(m); out.add(v)
+    for m in re.finditer(r"百分之([零一二两三四五六七八九十]+)", text):
+        v = cn2num(m.group(1))
+        if v: out.add(float(v))
+    text = re.sub(r"百分之[零一二两三四五六七八九十]+", " ", text)
     for m in re.finditer(r"[零一二两三四五六七八九十百千万]{2,}|[十百千万]", text):
         if m.start() and text[m.start() - 1] in "几数上成好": continue   # 几千、上万、数十：模糊说法，不是具体的数
+        if text[m.end():m.end() + 2] == "分之" or text[m.start():m.start() + 3] == "百分之": # 百分之十八：只认后面的十八
+            continue
         v = cn2num(m.group(0))
         if v: out.add(float(v))
+    return out
+
+
+def derive(nums):
+    """brief 里的数做一两步加减乘除能得到的数（利润 = 售价 − 进价 − 运费、差几倍……），算出来的不算编。"""
+    ns = sorted(n for n in nums if n > 0)[:20]; out = {}
+    g = lambda v: round(v, 2)
+    for a in ns:
+        for b in ns:
+            if a == b: continue
+            for v, f in ((a + b, f"{a:g}+{b:g}"), (a - b, f"{a:g}−{b:g}"), (a * b, f"{a:g}×{b:g}"), (a / b, f"{a:g}÷{b:g}")):
+                if v > 0: out.setdefault(g(v), f)
+            for c in ns:
+                if c not in (a, b) and a - b - c > 0: out.setdefault(g(a - b - c), f"{a:g}−{b:g}−{c:g}")
+    for a in ns:
+        out.setdefault(g(a * 12), f"{a:g}×12"); out.setdefault(g(a / 100), f"{a:g}%")
     return out
 
 
@@ -95,6 +117,7 @@ def main():
     brief = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8")) if len(sys.argv) > 2 else {}
     err, warn = [], []
     brief_nums = numbers_in(json.dumps({k: brief.get(k) for k in ("pain", "proof", "audience")}, ensure_ascii=False)) if brief else None
+    derived = derive(brief_nums) if brief_nums else {}
     bpm = film.get("bpm", 112); bar = 60 / bpm * 4
     chs = film.get("chapters") or []
     if not chs: err.append("没有 chapters")
@@ -172,6 +195,9 @@ def main():
             for j, ln in enumerate(s["lines"]):
                 for v in numbers_in(str(ln.get("text", ""))): where.setdefault(v, f"这一镜第{j + 1}句字幕「{ln.get('text')}」")
             odd = sorted(v for v in where if v > 2 and v not in brief_nums and not (1900 <= v <= 2100))
+            for v in [v for v in odd if v in derived]:
+                warn.append(f"{tag} 数字 {v:g} 是从 brief 算出来的（{derived[v]}），放行")
+            odd = [v for v in odd if v not in derived]
             if odd:
                 nums = "、".join(f"{v:g}（在 {where[v]}）" for v in odd)
                 if re.search("按.*算|来源", note_txt): warn.append(f"{tag} 数字 {nums} 不在 brief 里（note 写了怎么算的 / 来源，放行，自己再核对一遍）")
@@ -201,6 +227,8 @@ def main():
             how = f"还差 {want - n} 句：挑一两章往后加句子（加在已有的镜后面，或开新镜）" if n < want else f"多了 {n - want} 句：删掉最弱的几句"
             err.append(f"{brief['seconds']} 秒 @ {bpm} BPM 要正好 {want} 句（一句一小节 {bar:.2f} 秒），现在 {n} 句。{how}。现在各章：{per}")
     if shots and shots[0]["shot"].get("type") not in ("title", "statement", "timeline", "number", "compare"): warn.append("开头第一镜不是钩子类（title / statement / timeline / number / compare），确认前 3 秒能让人停下")
+    if len(lines) >= 8 and len(shots) > 0.75 * len(lines):
+        warn.append(f"镜头换得太勤：{len(lines)} 句用了 {len(shots)} 镜。标杆样片是一章一个主画面撑 3–4 句、每句往上加一样东西；能合的合进同一镜（rows / values / nodes 多写几条）")
     plain = sum(1 for s in shots if s["shot"].get("type") == "statement")
     if shots and plain > len(shots) / 2: warn.append(f"{plain}/{len(shots)} 镜是纯文字 statement，画面太少")
     if not re.search("主页|合集|评论", "".join(every[-40:])): warn.append("结尾没有看到下一步（主页 / 合集 / 评论区）")
