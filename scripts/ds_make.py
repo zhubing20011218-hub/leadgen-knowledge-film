@@ -96,13 +96,13 @@ def docs():
 
 
 WRITE_SYS = ("你在用下面这个技能做一条竖屏引流知识短片。需求访谈已经做完（brief.json），结构用推荐骨架，出路按 brief.outlet。"
-             "你只做一件事：写 film.json。只输出一个 JSON 对象，不要解释。写之前在心里过一遍：句数对不对、每句 ≤16 字无标点、每章第一句有 shot、"
+             "你只做一件事：写 film.json。只输出一个 JSON 对象，不要解释。写之前在心里过一遍：句数对不对、每句 ≤16 字无标点、每章有 shot（写在章上、lines 前面）、"
              "相邻章换色、有数字的镜写 note、开头三句能不能让人停下、结尾落到 cta。\n\n")
 
 REVIEW_SYS = """你是竖屏知识短片的严格评审。给你一张拼图：每一格是第 N 句字幕播到一半时的画面（左下角黄字是秒数，顺序和字幕表一致），再给你字幕表。
 逐格检查，只报真正的问题：
 1. 遮住字幕，看得出这一格在演什么吗？画面和这句字幕对得上吗？
-   连着几格是同一个画面、每格多出一样东西（一条、一个点、一个数）是正常的做法：只看"这一格新多出来的那样"是不是这句字幕说的东西，
+   一章顶上的大字是这一章的关键词，整章不变，不算问题。连着几格是同一个画面、每格多出一样东西（一条、一个点、一个数、一个盖章）是正常的做法：只看"这一格新多出来的那样"是不是这句字幕说的东西，
    对得上就不算问题，不要因为"画面和上一格差不多"就让它拆镜；对不上（这句说十七单、新多出来的却是别的）才报，改法是"这句开新镜演它"或"把这一条改成这句说的"。
 2. 主体够不够大？画面是不是大半空着、东西挤在一角？
 3. 有没有字压字、出画、被截断、小到手机上看不清？
@@ -113,8 +113,10 @@ REVIEW_SYS = """你是竖屏知识短片的严格评审。给你一张拼图：�
 改法只能用现有的件：title statement number bars ring timeline fork(可加 focus) compare checklist steps cycle cards object flow；
 "缺一样认得出的东西"就建议 object（一堆写 count）或给条目加 icon，图标只能从这些里选：{ICONS}。
 每个问题归一类：
-- content：改 film.json 就能解决（换一个件、删几条、缩短一段字、加 head、加图标……），fix 写清楚怎么改；
-  改法优先"在同一镜里改那一条"（让第 k 条就是第 k 句说的东西、加 icon），字幕里没说的东西不许加进画面；同一镜演不了这句时才拆成新的一镜；
+- content：改 film.json 就能解决（换一个件、删几条、缩短一段字、加 head、加图标、加 stamp……），fix 写清楚怎么改；
+  改法只在同一镜里改：让第 k 条就是第 k 句说的东西、改这一条的字、加 icon、结论句加 stamp；字幕里没说的东西不许加进画面。
+  不许建议开新镜、拆镜、换成别的件（一个画面撑好几句是这种片子的做法，全片画面数有上限）；同一镜实在演不了，就建议改这句的说法；
+  "加个图标更好认"这类锦上添花的不报，只报对不上、看不出、看不清的；
 - engine：画面件自己画坏了（越界、重叠这类排版 bug），改 film.json 解决不了。
 只输出 JSON：{"issues":[{"line":句号(从1数),"kind":"content|engine","problem":"…","fix":"…"}],"verdict":"一句话总评"}。没问题就给空数组。"""
 
@@ -123,7 +125,8 @@ MOOD_BPM = {"steady": 112, "tight": 128, "calm": 100}
 BEATS = [("① 开场钩子 + 处境", 0.18), ("② 断裂 + 片名", 0.12), ("③ 分叉", 0.2), ("④ 收窄 / 证据", 0.22), ("⑤ 出路", 0.16), ("⑥ 行动", 0.12)]
 
 
-SHOT_RATIO = 0.7   # 镜头数最多是句数的 70%：再多就像一句一换，比标杆样片跳（11-16 定的折中，改这一个数即可）
+def pic_max(n): return (n + 1) // 2      # 和 check_film.py 同一套：一个画面至少撑 2 句
+def pause_max(n): return max(1, n // 5)  # 最多几句画面不动（提问 / 结论）
 
 # 开场钩子（references/02 的表）：(名字, 写法, 第一镜用)
 HOOKS = {
@@ -159,16 +162,25 @@ def plan_lines(brief):
         if sum(cnt) >= n: break
         cnt[i] += 1
     while sum(cnt) > n: cnt[cnt.index(max(cnt))] -= 1
-    hook = pick_hook(brief); how, first = HOOKS[hook]; cap = int(n * SHOT_RATIO)
-    shots = (f"全片最多 {cap} 镜（{n} 句）：一镜撑 2–4 句，第一句开镜，后面的句子不写 shot，让同一镜往上加东西——"
-             "第 k 句加上去的那一条就是第 k 句字幕说的东西（rows / nodes / values 按句子顺序写，一句对一条），字幕没说的东西不许加。"
-             "某句说的东西这一镜演不了时，先试着把这句换个说法接上这一镜（说它画面上有的那样东西），实在接不上才开新镜。")
+    hook = pick_hook(brief); how, first = HOOKS[hook]
+    m = max(4, round(n / 3.5)); per = [n // m + (1 if i < n % m else 0) for i in range(m)]   # 弱模型数不清句数：直接把每章几句算好给它（标杆样片一章 3.5 句）
+    if len(per) > 2 and per[-1] > 2: per[-1] -= 1; per[1] += 1   # 最后一章（落到 cta）短一点
+    method = (f"按「画面先行」写（标杆样片和上游项目都是这么做的：一章一个画面，一个画面撑 2–5 句，每句只往上加一样东西）。"
+              f"全片分 {m} 章，每章的句数照这个写：{' '.join(map(str, per))}（加起来正好 {n} 句，pics 和 lines 都按这个数写）。每章照这四步："
+              "① key：这章的大关键词，2–5 个字，观众看完记住的那个词（比如「价格战」「换个市场」），整章顶在画面上；"
+              "② 在这章的 lines 前面先写 pics：这章每一句画面上多出来的那一条，一句一条（这就是分镜）；"
+              "③ 照 pics 在章上写 shot（这章的画面，写在 lines 前面）：挑一个能把这几条都装下的件（几条说的是不同的事就用 steps / checklist / cards，条目里可以写数），values / rows / nodes / items 按 pics 的顺序一次写好，stamp 盖章也算一条；"
+              "最后写 lines：句子里不写 shot，第 k 句说的就是第 k 条，字幕里说的数画面上必须有；"
+              "④ 某条装不进这个件：先换个说法，让这句说画面上有的东西；还不行，才在这章里开第二镜。"
+              "相邻两章换不同的件；steps / checklist 只是一行行字，全片最多用 2 次（片尾「下一步」用 steps 正合适）——有数就用 number / bars / ring，几条路用 fork，几样东西用 cards / object，从 A 到 B 用 flow，同一件事两种情况用 compare。"
+              f"全片 {n} 句最多 {pic_max(n)} 个画面；最多 {pause_max(n)} 句可以画面不动（只给提问、结论，而且不许说数字）；"
+              "一章最后那句是结论或情绪落点（白干、没回音、做成了）时，给这一镜加 stamp 盖一个 2–5 字的章，这句就有画面了。")
     ends = (f"开场用「{hook}」：{how}，第一镜用 {first}；不要用「大家好」「你知道吗」。"
             "倒数第二句回扣第一句：用回第一句里的那个词或那个画面，但意思变了（比如开头问一个选择，结尾给出答案；开头是一张床，结尾还是那张床、但人已经起来了）。用你自己的话写，不要照抄这里和 references 里的例句；最后一句落到 cta。")
     if brief.get("angle") == "custom":
-        return bpm, n, f"bpm 写 {bpm}。这条片必须正好 {n} 句字幕（写完数一遍），按商量好的结构分 {max(3, n // 4)}–{max(4, n // 3)} 章，每章 2–5 句。{shots}{ends}"
+        return bpm, n, f"bpm 写 {bpm}。这条片必须正好 {n} 句字幕（写完数一遍），按商量好的结构走。{method}{ends}"
     lines = "；".join(f"{b} {c} 句" for (b, _), c in zip(BEATS, cnt))
-    return bpm, n, f"bpm 写 {bpm}。这条片必须正好 {n} 句字幕（写完数一遍）。按六拍分：{lines}。每拍是 1–2 章，每章 2–5 句。{shots}{ends}"
+    return bpm, n, f"bpm 写 {bpm}。这条片必须正好 {n} 句字幕（写完数一遍）。情绪顺序按六拍走：{lines}——拍不是章，相邻两拍可以放进同一章、同一个画面。{method}{ends}"
 
 
 ICON_NAMES = " ".join(re.findall(r"^  (\w+)\(fr, c\)", (SKILL / "template/icons.js").read_text(encoding="utf-8"), re.M))
@@ -183,9 +195,10 @@ def line_table(film):
     rows, i = [], 0
     for c in film.get("chapters") or []:
         cur = None
-        for ln in c.get("lines") or []:
+        for j, ln in enumerate(c.get("lines") or []):
             i += 1
-            if ln.get("shot"): cur = ln["shot"].get("type")
+            sh = ln.get("shot") or (c.get("shot") if j == 0 else None)
+            if sh: cur = sh.get("type")
             rows.append(f"第{i}句 [{c.get('name')}/{cur}] {ln.get('text')}")
     return "\n".join(rows)
 
@@ -220,17 +233,21 @@ def main():
     def save(f): (proj / "film.json").write_text(json.dumps(f, ensure_ascii=False, indent=1), encoding="utf-8")
 
     def fix_loop(film, tag):
-        save(film); warned = False; last = None; used_pro = False; retried = False
+        save(film); warned = False; last = None; used_pro = False; retried = False; good = None
+        shots_of = lambda out: int((re.search(r"(\d+) 镜", out) or [0, 999])[1])
         for r in range(rounds + 2):
             ok, out, errs, warns = check(proj)
+            if good and (not ok or shots_of(out) > good[1]):   # 按警告润色是"试一下"：润色后出错或画面变多（实测它一润色就拆镜），退回润色前那一版
+                print(f"   （按警告改的这一版{'出了错' if not ok else f'画面从 {good[1]} 个变成 {shots_of(out)} 个'}，退回上一版）")
+                film = good[0]; save(film); convo.append({"role": "assistant", "content": json.dumps(film, ensure_ascii=False)}); return film, True
             stuck = bool(errs) and last is not None and len(errs) >= len(last); last = errs   # 错误没减少 = 卡住
             final = r >= rounds and errs and not used_pro and model == "deepseek-flash"   # 轮数用完还有错：最后给 pro 一次机会
             if r > rounds or (r == rounds and not final): print("   " + out.splitlines()[0] + ("　✓" if ok else f"　✗ {len(errs)} 个错")); return film, ok
             print("   " + out.splitlines()[0] + ("　✓" if ok else f"　✗ {len(errs)} 个错"))
-            warns = [w for w in warns if "镜头换得太勤" not in w]   # 只给人看：发给模型它会把演不了的句子硬并进去，又冒出"画面不动"的错，来回拉锯（11-16 实测）
+            warns = [w for w in warns if "放行" not in w]   # 「放行」只是告诉人这个数核对过了，发给模型它会去乱改
             todo = errs + ([] if warned else warns)
             if ok and (warned or not warns): return film, ok
-            if ok: warned = True
+            if ok: warned = True; good = (film, shots_of(out))
             ask_fix = "检查结果如下，照着改（只改有问题的地方，其他保持原样），输出完整 film.json：\n" + "\n".join(todo)
             if stuck and not retried and model == "deepseek-flash":
                 # 第一次卡住先不换 pro：多半是报错没看懂。flash 只看说明 + 当前稿 + 这几条错再改一次（说明部分照样命中缓存，pro 一轮要 ¥0.05–0.09）

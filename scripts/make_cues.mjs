@@ -11,7 +11,7 @@ const film = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const BPM = film.bpm || 112, BEAT = 60 / BPM, BAR = BEAT * 4, PHASE = film.phase || 0;
 const chapters = film.chapters || [];
 let n = 0;
-const CH = chapters.map((c, i) => { const first = n; n += (c.lines || []).length; return {i, first, last: n - 1, turn: !!c.turn, title: (c.lines || [])[0]?.shot?.type === 'title'}; });
+const CH = chapters.map((c, i) => { const first = n; n += (c.lines || []).length; return {i, first, last: n - 1, turn: !!c.turn, title: ((c.lines || [])[0]?.shot || c.shot)?.type === 'title'}; });
 const N = n, END = PHASE + N * BAR + 0.5, at = (line) => PHASE + line * BAR;
 let turn = CH.findIndex((c) => c.turn); if (turn < 0) turn = Math.max(1, CH.length - 2);
 

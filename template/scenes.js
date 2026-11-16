@@ -156,21 +156,22 @@ const SCENES = {
     const k = E.out3(seg(c.lt, ti, ti + (i === 0 && d.from == null ? 0.05 : packed ? 0.4 : 0.7)));
     const v = lerp(prev, vals[i], k), Y = d.bar ? 720 : 830;   // 下面没有条就往下放，别让主体挤在上半截
     const str = fmt(v, dec), u = (d.units && d.units[i]) || d.unit || '';
-    const groupW = sz => (d.prefix ? fr.measure(d.prefix, { font: 'sansh', size: sz * 0.45 }) + 14 : 0) + fr.measure(fmt(vals[i], dec) + (d.suffix || ''), { font: 'sansh', size: sz, track: -4 }) + (u ? 18 + fr.measure(u, { font: 'sansh', size: 46 }) : 0);
+    const P = j => Array.isArray(d.prefix) ? String(d.prefix[j] || '') : String(d.prefix || ''), U = j => Array.isArray(d.suffix) ? String(d.suffix[j] || '') : String(d.suffix || '');   // 几个值单位不同（12 万、30 块）时 prefix / suffix 写成列表
+    const groupW = sz => (P(i) ? fr.measure(P(i), { font: 'sansh', size: sz * 0.45 }) + 14 : 0) + fr.measure(fmt(vals[i], dec) + U(i), { font: 'sansh', size: sz, track: -4 }) + (u ? 18 + fr.measure(u, { font: 'sansh', size: 46 }) : 0);
     let size = 300; while (size > 60 && groupW(size) > CW - 20) size -= 6;
     if (n > 1) size = Math.min(size, 260);   // 上面要给旧值留一行
     if (i > 0) {   // 旧值缩小放在上面、划一道：读得出"从 A 变成了 B"，不和新值叠成重影
-      const gs = Math.min(110, size * 0.36), gt = (d.prefix || '') + fmt(prev, dec) + (d.suffix || '') + ((d.units && d.units[i - 1]) ? ' ' + d.units[i - 1] : ''), gy = Y - size * 0.62 - gs * 0.6;
+      const gs = Math.min(110, size * 0.36), gt = P(i - 1) + fmt(prev, dec) + U(i - 1) + ((d.units && d.units[i - 1]) ? ' ' + d.units[i - 1] : ''), gy = Y - size * 0.62 - gs * 0.6;
       const gw = fr.measure(gt, { font: 'sansh', size: gs }), ga = 0.55 * E.out3(seg(c.lt, ti, ti + 0.4));
       fr.text(gt, CX, gy, { font: 'sansh', size: gs, color: c.alt, a: ga });
       fr.line(CX - gw / 2 - 8, gy, CX - gw / 2 - 8 + (gw + 16) * E.out3(seg(c.lt, ti + 0.1, ti + 0.5)), gy, { color: c.alt, w: 5, a: ga });
     }
     const ent = E.out3(seg(c.lt, 0, 0.35));
     fr.g({ at: [CX, Y], s: lerp(0.86, 1, ent) * (1 + 0.04 * (1 - seg(c.lt, ti, ti + 0.25)) * (i > 0 ? 1 : 0)) }, () => {
-      const pw = d.prefix ? fr.measure(d.prefix, { font: 'sansh', size: size * 0.45 }) + 14 : 0;
-      const nw = fr.measure(str + (d.suffix || ''), { font: 'sansh', size, track: -4 }), uw = u ? 18 + fr.measure(u, { font: 'sansh', size: 46 }) : 0, x0 = -(pw + nw + uw) / 2;
-      if (d.prefix) fr.text(d.prefix, x0, -size * 0.12, { font: 'sansh', size: size * 0.45, color: c.col, align: 'l', a: ent, glow: 20 });
-      fr.text(str + (d.suffix || ''), x0 + pw, 0, { font: 'sansh', size, track: -4, align: 'l', a: ent, grad: [[0, '#FFFFFF'], [1, mix('#FFFFFF', c.col, 0.45)]], glow: 34, glowColor: c.col, glowA: 0.5 });
+      const pw = P(i) ? fr.measure(P(i), { font: 'sansh', size: size * 0.45 }) + 14 : 0;
+      const nw = fr.measure(str + U(i), { font: 'sansh', size, track: -4 }), uw = u ? 18 + fr.measure(u, { font: 'sansh', size: 46 }) : 0, x0 = -(pw + nw + uw) / 2;
+      if (P(i)) fr.text(P(i), x0, -size * 0.12, { font: 'sansh', size: size * 0.45, color: c.col, align: 'l', a: ent, glow: 20 });
+      fr.text(str + U(i), x0 + pw, 0, { font: 'sansh', size, track: -4, align: 'l', a: ent, grad: [[0, '#FFFFFF'], [1, mix('#FFFFFF', c.col, 0.45)]], glow: 34, glowColor: c.col, glowA: 0.5 });
       if (u) fr.text(u, x0 + pw + nw + 18, size * 0.22, { font: 'sansh', size: 46, color: INK.text, align: 'l', a: ent });
     });
     if (d.bar) {
@@ -228,8 +229,9 @@ const SCENES = {
     const bt = bs * c.bar, kb = brk >= 0 ? E.out3(seg(c.lt, bt, bt + 0.3)) : 0;
     const shake = kb > 0 ? Math.sin(c.lt * 70) * 10 * (1 - seg(c.lt, bt, bt + 0.4)) : 0;
     const per = Math.min(c.beat, (c.bar * 0.9) / Math.max(n, 1));
+    const t0 = i => c.span > 1 ? at(c, i, n) : i * per;   // 一镜撑几句：一句亮一个节点（多的挤在最后一句）；只有一句：按拍子一口气亮完
     fr.g({ at: [shake, 0] }, () => {
-      const kl = E.out3(seg(c.lt, 0, per * n));
+      const kl = E.out3(seg(c.lt, 0, t0(n - 1) + 0.3));
       fr.line(xs[0], y, lerp(xs[0], xs[n - 1], kl), y, { color: c.col, w: 4, a: 0.8, glow: 14 });
       if (kb > 0 && brk < n - 1) {
         const xa = xs[brk] + 30, xb = xs[brk + 1] - 30, mid = (xa + xb) / 2;
@@ -238,13 +240,15 @@ const SCENES = {
         fr.line(xb, y, xs[n - 1], y, { color: '#5A6075', w: 4, a: kb });
       }
       nodes.forEach((nd, i) => {
-        const a0 = i * per, k = E.out3(seg(c.lt, a0, a0 + 0.3)); if (k <= 0) return;
+        const a0 = t0(i), k = E.out3(seg(c.lt, a0, a0 + 0.3)); if (k <= 0) return;
         const lost = kb > 0 && i > brk, colr = lost ? mix(c.col, '#5A6075', kb) : c.col, up = i % 2 === 0;
         fr.circle(xs[i], y, 22 * k, { fill: INK.base, color: colr, w: 5, glow: lost ? 0 : 20 });
         fr.circle(xs[i], y, 8 * k, { fill: colr });
         fr.line(xs[i], y + (up ? -30 : 30), xs[i], y + (up ? -70 : 70), { color: colr, w: 2, a: 0.5 * k });
-        fr.text(nd.label, xs[i], y + (up ? -110 : 110), { font: 'sansh', size: fit(fr, nd.label, 'sansh', 58, (CW / Math.max(n - 1, 1)) * 1.6), color: lost ? '#6A7088' : INK.white, a: k });
-        if (nd.sub) fr.text(nd.sub, xs[i], y + (up ? -178 : 176), { font: 'mono', size: 38, color: lost ? '#555A70' : c.col, a: k, glow: lost ? 0 : 10 });
+        const ls = fit(fr, nd.label, 'sansh', 58, Math.min((CW / Math.max(n - 1, 1)) * 1.6, CW * 0.6)), lw = fr.measure(nd.label, { font: 'sansh', size: ls });
+        const sw = nd.sub ? fr.measure(nd.sub, { font: 'mono', size: 38 }) : 0, tx = clamp(xs[i], 48 + Math.max(lw, sw) / 2, W - 48 - Math.max(lw, sw) / 2);   // 两头的节点字长时往里挪，别贴边
+        fr.text(nd.label, tx, y + (up ? -110 : 110), { font: 'sansh', size: ls, color: lost ? '#6A7088' : INK.white, a: k });
+        if (nd.sub) fr.text(nd.sub, tx, y + (up ? -178 : 176), { font: 'mono', size: 38, color: lost ? '#555A70' : c.col, a: k, glow: lost ? 0 : 10 });
         if (nd.icon) drawIcon(fr, nd.icon, xs[i], y + (up ? -280 : 280), 110, lost ? '#5A6075' : c.col, k);
       });
     });

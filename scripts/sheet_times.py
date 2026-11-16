@@ -8,8 +8,8 @@ f = json.load(open(sys.argv[1], encoding="utf-8")); cap = int(sys.argv[2]) if le
 bar = 60 / (f.get("bpm") or 112) * 4; ph = f.get("phase") or 0
 lines, firsts = [], []
 for c in f.get("chapters") or []:
-    for ln in c.get("lines") or []:
-        if ln.get("shot"): firsts.append(len(lines))
+    for j, ln in enumerate(c.get("lines") or []):
+        if ln.get("shot") or (j == 0 and c.get("shot")): firsts.append(len(lines))
         lines.append(ln)
 idx = list(range(len(lines)))
 if len(idx) > cap:

@@ -25,10 +25,12 @@ ICONS = set("phone laptop resume person people bed desk factory box ship plane g
 # 字幕里允许的字：汉字、字母、数字、空格和少数数字符号；其余标点一律不许（字幕不带标点）
 SUB_OK = re.compile(r"^[一-鿿㐀-䶿A-Za-z0-9 %+×¥$/.]+$")
 CONTACT = r"微信|vx|VX|加我|私信我|联系方式|电话|二维码|QQ|扣扣|wx号|链接在评论|扣 ?1|扣 ?666|领资料|领取|免费送|私我"   # 后几个是诱导互动 / 导流话术，平台会限流
-SHOT_RATIO = 0.7   # 和 ds_make.py 同一个数：镜头数最多是句数的 70%
+def pic_max(n): return (n + 1) // 2      # 画面数的目标：平均一个画面至少撑 2 句（标杆样片 3.5 句，上游规矩 2–5 句）。超了警告。和 ds_make.py 同一套
+def pic_hard(n): return -(-n * 3 // 5)   # 超过句数的 60% 才报错（11-17 实测：卡死在目标线上，flash 会在拆和合之间来回摆）
+def pause_max(n): return max(1, n // 5)  # 最多几句画面不动（停顿句：提问 / 结论）。上游实测约每五句一句
 PROMISE = r"月入|日入|年入|稳赚|躺赚|包赚|保证赚|一定赚|回本|暴富|财务自由|零风险|稳挣|零成本|零门槛|不用本钱|不要本钱|不花一分钱"
 INTERNAL = r"不含联系方式|访谈|\bbrief\b|作者本人账目|SOP|skill|DeepSeek|Claude|提示词|分镜|示例数据来自"
-ABSOLUTE = r"最好|最强|第一|唯一|100%|绝对|永远"
+ABSOLUTE = r"最好|最强|第一(?![步条把个次章句天年件种层])|唯一|100%|绝对|永远"   # 「第一步」「第一把锁」是序数，不算
 NUM = re.compile(r"\d")
 
 
@@ -83,8 +85,10 @@ def derive(nums):
 def capacity(d):
     ty = d.get("type"); L = lambda k: len(d.get(k) or [])
     return {"title": 1, "statement": 1, "number": max(1, L("values")), "bars": L("rows"), "ring": 1 + L("rows"),
-            "timeline": 2 if d.get("breakAt") is not None else 1, "fork": 1 if d.get("focus") is not None else max(2, L("paths")), "compare": 2,
-            "checklist": L("rows"), "steps": L("rows"), "cycle": L("nodes"), "cards": L("items"), "object": 1, "flow": 2}.get(ty, 1)
+            "timeline": max(L("nodes"), 2 if d.get("breakAt") is not None else 1),   # 一镜撑几句时一句亮一个节点
+            "fork": 1 if d.get("focus") is not None else max(2, L("paths") + 1),   # 第一句长出路，之后一句划掉一条，最后一句点亮留下的那条
+            "compare": 2,
+            "checklist": L("rows"), "steps": L("rows"), "cycle": L("nodes"), "cards": L("items"), "object": 1, "flow": 2}.get(ty, 1) + (1 if (d.get("stamp") if isinstance(d.get("stamp"), str) else (d.get("stamp") or {}).get("text")) else 0)   # 盖章也算一步
 
 
 def icon_fields(o, path="shot"):   # 找出所有 icon 字段
@@ -100,7 +104,7 @@ def width(s):   # 估算一行字幕的宽度（一个汉字 = 1）
     return sum(1 if "㐀" <= ch <= "鿿" else 0.3 if ch == " " else 0.58 for ch in s)
 
 
-HIDDEN = {"icon", "type", "color"}   # 这些字段不上屏（图标名、件名、颜色名），不拿来查屏上用语
+HIDDEN = {"icon", "type", "color", "pics", "pic"}   # 这些字段不上屏（图标名、件名、颜色名、写给自己看的分镜清单），不拿来查屏上用语
 
 
 def strings(o):
@@ -122,7 +126,11 @@ def main():
     bpm = film.get("bpm", 112); bar = 60 / bpm * 4
     chs = film.get("chapters") or []
     if not chs: err.append("没有 chapters")
-    lines, shots = [], []
+    for ci, ch in enumerate(chs, 1):   # 画面写在章上（chapter.shot）= 这章第一句的 shot
+        if ch.get("shot") and (ch.get("lines") or []):
+            if ch["lines"][0].get("shot"): err.append(f"第{ci}章「{ch.get('name', '')}」章上写了 shot，第一句又写了 shot：只留章上那个")
+            else: ch["lines"][0] = {**ch["lines"][0], "shot": ch["shot"]}
+    lines, shots, pauses = [], [], []
     for ci, ch in enumerate(chs, 1):
         tag = f"第{ci}章「{ch.get('name', '')}」"
         if not ch.get("name"): err.append(f"{tag} 没有 name")
@@ -131,10 +139,17 @@ def main():
         if re.search(r"[\u4e00-\u9fff]", str(ch.get("en", ""))): err.append(f"{tag} en 只能写英文")
         ls = ch.get("lines") or []
         if not ls: err.append(f"{tag} 没有字幕"); continue
-        if not ls[0].get("shot"): err.append(f"{tag} 第一句必须带 shot（每章开一个新镜），比如 \"shot\": {{\"type\": \"statement\", \"big\": \"两到六个字\"}}")
+        key = str(ch.get("key", ""))
+        if key and (len(key) > 6 or not SUB_OK.match(key)): err.append(f"{tag} key「{key}」要 2–6 个字、不带标点（整章顶上的大关键词，比如「三把锁」「换个市场」）")
+        plain_ch = all((ln.get("shot") or {}).get("type") in ("title", "statement") for ln in ls if ln.get("shot"))
+        if not key and not plain_ch: warn.append(f"{tag} 没写 key：给这一章一个 2–5 字的大关键词（观众记住的那个词），整章顶在画面上")
+        if len(ls) == 1 and not plain_ch and ci < len(chs): warn.append(f"{tag} 只有 1 句：一章 2–5 句围着一个画面讲，这句并进前后一章，或者再写一两句演这个画面")
+        if len(ls) > 5: warn.append(f"{tag} 有 {len(ls)} 句：一章最多 5 句，拆成两章（换个关键词）")
+        if ch.get("pics") is not None and len(ch.get("pics") or []) != len(ls): warn.append(f"{tag} pics 写了 {len(ch.get('pics') or [])} 条，字幕有 {len(ls)} 句：一句对一条")
+        if not ls[0].get("shot"): err.append(f"{tag} 没有画面：章上写 \"shot\"（这章的画面，在 lines 前面），比如 \"shot\": {{\"type\": \"statement\", \"big\": \"两到六个字\"}}")
         for ln in ls:
             n = len(lines) + 1
-            if ln.get("shot"): shots.append({"shot": ln["shot"], "lines": [], "tag": f"第{n}句起的镜"})
+            if ln.get("shot"): shots.append({"shot": ln["shot"], "lines": [], "tag": f"第{n}句起的镜", "first": n})
             if shots: shots[-1]["lines"].append(ln)
             lines.append(ln)
             t = str(ln.get("text", "")).strip()
@@ -161,8 +176,17 @@ def main():
                     tip = ("：只有一个数就别用 bars，换成 number（values 写这一个数，units 写一句说明）——bars 是几样东西比大小" if ty == "bars"
                            else "：补齐条目，补的条目里不许编数字")
                 err.append(f"{tag}（{ty}）{f} 要 {lo}–{hi} 个，现在 {len(v)} 个{tip}")
+        if ty == "number":   # 「12 万」「30 块」放进同一个 number：suffix 只写一个「万」，第二个值就成了「30万」（11-17 实测）
+            vals = d.get("values") or []
+            for k, (v, ln) in enumerate(zip(vals, s["lines"])):
+                u = d["suffix"][k] if isinstance(d.get("suffix"), list) and k < len(d["suffix"]) else ("" if isinstance(d.get("suffix"), list) else str(d.get("suffix") or ""))
+                t = re.sub(r"\s", "", str(ln.get("text", ""))); vs = f"{float(v):g}" if str(v).replace(".", "", 1).isdigit() else str(v)
+                if u and re.search(r"[一-鿿]", u) and vs in t and vs + u not in t:
+                    err.append(f"第{s['first'] + k}句说的是「{ln.get('text')}」，画面上却是「{vs}{u}」：几个值单位不一样时 suffix 写成列表，一个值一个，比如 \"suffix\": [\"万\", \"\"]（prefix 也一样）")
         if ty == "number" and len(d.get("values") or []) > len(s["lines"]) + 3: warn.append(f"{tag} number 的值比句子多太多，挤在一句里会看不清")
         if ty == "bars" and any(r.get("tag") and (len(str(r["tag"])) <= 2 or str(r["tag"]) in str(d.get("unit", ""))) for r in d.get("rows") or []): warn.append(f"{tag} bars 的 tag 像是单位（单位写在 unit 里，tag 写一句补充或留空）")
+        dup = [str(r.get("note")) for r in (d.get("rows") or []) if isinstance(r, dict) and r.get("note") and str(r["note"]).replace(" ", "") in str(r.get("text", "")).replace(" ", "")]
+        if dup: warn.append(f"{tag} 条目下面的小字「{'」「'.join(dup)}」和上面的大字重复了：小字写一句补充（数字、条件、结果），没有就不写")
         if ty == "steps" and any(re.fullmatch(r"\s*0?\d+\s*", str(r.get("note", "x"))) for r in d.get("rows") or []): warn.append(f"{tag} steps 的 note 只写了编号，编号会自动画，note 留空或写一句补充")
         if ty == "fork" and d.get("focus") is not None and not (0 <= int(d["focus"]) < len(d.get("paths") or [])): err.append(f"{tag} focus 超出 paths 范围")
         if ty == "fork" and d.get("pick") is not None and not (0 <= int(d["pick"]) < len(d.get("paths") or [])): err.append(f"{tag} pick 超出 paths 范围")
@@ -172,17 +196,31 @@ def main():
             if v not in ICONS: err.append(f"{tag} {pth} 的图标「{v}」没有，只能用：{' '.join(sorted(ICONS))}")
         if ty == "object" and d.get("count") is not None and not (2 <= int(d["count"]) <= 60): err.append(f"{tag} object 的 count 要 2–60（一个就别写 count）")
         span, cap = len(s["lines"]), capacity(d)
-        if span > cap:
-            msg = f"{tag}（{ty}）有 {span} 句，但这个件只能变 {cap} 次：后面 {span - cap} 句画面不动。让每句对上一条：第 k 条写第 k 句字幕说的东西（不许编数字、不许加字幕没说的）；后面几句说的东西这个件演不了，就从那句起开新镜"
-            err.append(msg)   # 一句画面不动 = 这句话没演出来；和"镜头太勤"打架时以这条为准（11-16：只当警告时模型为了少换镜，把演不了的句子硬塞进去）
+        st = d.get("stamp")
+        if isinstance(st, str): st = d["stamp"] = {"text": st}   # "stamp": "白干" 也认
+        if st is not None:
+            if not isinstance(st, dict) or not (1 <= len(str(st.get("text", "")).replace(" ", "")) <= 5) or not SUB_OK.match(str(st.get("text", "x"))): err.append(f"{tag} stamp「{(st or {}).get('text', '') if isinstance(st, dict) else st}」要 2–5 个字、不带标点，写成 {{\"text\": \"白干\"}}")
+            elif st.get("at") is not None and int(st["at"]) != span - 1: err.append(f"{tag} stamp 的 at={st['at']}：章是这一段的结论，只盖在这一镜最后一句。最小改法：删掉 \"at\"")
+            if ty in ("title", "statement"): warn.append(f"{tag} {ty} 上不画盖章，stamp 放到有画面的那一镜")
+        def leaves(o):
+            if isinstance(o, bool): return
+            if isinstance(o, (int, float, str)): yield str(o)
+            elif isinstance(o, dict): yield from (x for k, v in o.items() if k not in HIDDEN | {"note", "breakAt", "breakStep", "pick", "focus", "at", "max", "pct"} for x in leaves(v))
+            elif isinstance(o, list): yield from (x for v in o for x in leaves(v))
+        on_screen = set().union(set(), *[numbers_in(x) for x in leaves(d)])
+        for j, ln in enumerate(s["lines"]):   # 字幕说的数，这一镜画面上要有（说"上了40个商品"，画面上就得有 40）
+            miss = sorted(v for v in numbers_in(str(ln.get("text", ""))) if v >= 3 and v not in on_screen and not (1900 <= v <= 2100))
+            if miss: err.append(f"第{s['first'] + j}句「{ln.get('text')}」说了 {'、'.join(f'{v:g}' for v in miss)}，可这一镜（{ty}）画面上没有：把它写成这一镜的一条（values / rows / items 里，或 count、label），换不进去就换一个能放下它的件；或者这句不说数")
+        for j in range(cap, span):   # 这一镜多出来的句子：画面不动（停顿句）
+            pauses.append((s["first"] + j, s["lines"][j], tag, ty))
         if ty in ("checklist", "steps", "cycle", "cards", "bars") and span >= 2:
             said = " ".join(str(ln.get("text", "")) for ln in s["lines"])
             items = d.get("rows") or d.get("nodes") or d.get("items") or []
             lost = [str(x.get("text") or x.get("label") or x.get("name") or "") for x in items if isinstance(x, dict)]
             lost = [t for t in lost if len(t) >= 2 and not any(t[i:i + 2] in said for i in range(len(t) - 1))]
             if lost: warn.append(f"{tag}（{ty}）的条目「{'」「'.join(lost)}」这一镜的字幕里都没说：合镜时每句加的那条要是这句说的东西，字幕没说的删掉或换成字幕说的")
-        if ty in ("steps", "checklist", "cards", "cycle"):
-            k = len(d.get("rows") or d.get("items") or d.get("nodes") or [])
+        if ty in ("steps", "checklist", "cards", "cycle", "fork"):
+            k = len(d.get("rows") or d.get("items") or d.get("nodes") or d.get("paths") or [])
             for ln in s["lines"]:
                 m = re.search(r"([0-9]+|[一二两三四五六七八九十]) ?(步|件事|条路)", str(ln.get("text", "")))   # "一条视频"的"条"是量词，不核对
                 if m and int(cn2num(m.group(1)) if not m.group(1).isdigit() else m.group(1)) != k:
@@ -208,9 +246,10 @@ def main():
                     for i, v in enumerate(o): yield from walk(v, f"{path}[{i}]")
             where = {}
             for pth, x in walk(d, "shot"):
-                for v in numbers_in(x): where.setdefault(v, f"{pth}「{x}」")
+                for v in numbers_in(x): where.setdefault(v, []).append(f"{pth}「{x}」")
             for j, ln in enumerate(s["lines"]):
-                for v in numbers_in(str(ln.get("text", ""))): where.setdefault(v, f"这一镜第{j + 1}句字幕「{ln.get('text')}」")
+                for v in numbers_in(str(ln.get("text", ""))): where.setdefault(v, []).append(f"第{s['first'] + j}句字幕「{ln.get('text')}」")
+            where = {v: " 和 ".join(w) for v, w in where.items()}   # 一个数常常字幕和画面里都有：全列出来，只删一处会和"字幕说的数画面上要有"来回打架（11-17 实测）
             odd = sorted(v for v in where if v > 2 and v not in brief_nums and not (1900 <= v <= 2100))
             for v in [v for v in odd if v in derived]:
                 warn.append(f"{tag} 数字 {v:g} 是从 brief 算出来的（{derived[v]}），放行")
@@ -228,7 +267,7 @@ def main():
                         if ty == "bars" and len(left) == 1:
                             r = left[0]; tip += f"；删完 bars 只剩一条，比不了大小，整镜换成 number：\"values\": [{r.get('value')}]，\"units\": [\"{r.get('label', '')}\"]，unit 写进 suffix"
                         tip += "。"
-                    err.append(f"{tag} 数字 {nums} 在 brief 里找不到：疑似编造。{tip}用 brief 里的数；从 brief 算出来的，note 写「按 … 算」；公开规则写「来源：…」；拿不出依据就别放数字（「示意」只给人生节点用）")
+                    err.append(f"{tag} 数字 {nums} 在 brief 里找不到：疑似编造（多半是照抄了 references 里的例句）。{tip}字幕和画面里出现的地方一起删掉或改掉；用 brief 里的数；从 brief 算出来的，note 写「按 … 算」；公开规则写「来源：…」；拿不出依据就别放数字（「示意」只给人生节点用）")
         has_num = any(NUM.search(x) for x in strings({k: v for k, v in d.items() if k not in ("type", "note", "breakAt", "breakStep", "pick", "max")})) or any(NUM.search(str(ln.get("text", ""))) for ln in s["lines"])
         if has_num and ty not in ("title", "statement", "steps") and not any(notes):
             err.append(f"{tag}（{ty}）屏上有数字，但没有 note 写出处（真实来源 / 示例 / 示意）")
@@ -254,7 +293,10 @@ def main():
         want = round(brief["seconds"] / bar)
         if abs(n - want) > 1:
             per = "，".join(f"「{c.get('name')}」{len(c.get('lines') or [])} 句" for c in chs)
-            how = f"还差 {want - n} 句：挑一两章往后加句子（加在已有的镜后面，或开新镜）" if n < want else f"多了 {n - want} 句：删掉最弱的几句"
+            order = sorted(range(len(chs)), key=lambda i: len(chs[i].get("lines") or []), reverse=n > want)   # 多了从句子最多的章删，少了往句子最少的章加
+            pick = "、".join(f"「{chs[i].get('name')}」" for i in sorted(order[:abs(n - want)]))
+            how = (f"还差 {want - n} 句。最小改法：在 {pick} 各加一句（这章画面的条目同时加一条，就是这句说的东西）" if n < want
+                   else f"多了 {n - want} 句。最小改法：{pick} 各删一句（这章画面的条目同时删掉那一条），其他章一句都不动")
             err.append(f"{brief['seconds']} 秒 @ {bpm} BPM 要正好 {want} 句（一句一小节 {bar:.2f} 秒），现在 {n} 句。{how}。现在各章：{per}")
     if shots and shots[0]["shot"].get("type") not in ("title", "statement", "timeline", "number", "compare", "fork", "object"): warn.append("开头第一镜不是钩子类（title / statement / timeline / number / compare / fork / object，见 references/02 的钩子表），确认前 3 秒能让人停下")
     if len(lines) >= 8:   # 首尾回扣：倒数两句里要有第一句的词（看完想再刷一遍开头）
@@ -264,8 +306,35 @@ def main():
             warn.append(f"结尾没回扣开头：倒数第二、三句用回第一句「{lines[0].get('text')}」里的词或画面，但意思变了")
     pics = sum(1 for i, x in enumerate(shots) if not (i and x["shot"].get("type") == "fork" and x["shot"].get("focus") is not None
                                                       and shots[i - 1]["shot"].get("type") == "fork" and shots[i - 1]["shot"].get("paths") == x["shot"].get("paths")))   # 逐条讲同一组岔路只换高亮，算一个画面
-    if len(lines) >= 8 and pics > SHOT_RATIO * len(lines):
-        warn.append(f"镜头换得太勤：{len(lines)} 句换了 {pics} 次画面（最多 {int(SHOT_RATIO * len(lines))} 次）。标杆样片是一章一个主画面撑 3–4 句、每句往上加一样东西；能合的合进同一镜（rows / values / nodes 多写几条）。但合进去的每一句都要让画面多一样东西，做不到就宁可开新镜")
+    if len(pauses) > pause_max(n):
+        lst = "、".join(f"第{no}句「{ln.get('text')}」" for no, ln, _, _ in pauses)
+        err.append(f"{len(pauses)} 句画面不动（{lst}），{n} 句最多 {pause_max(n)} 句（只留给提问 / 结论）。最小改法：给那一镜加一步——rows / values / nodes 多写一条（就是这句说的东西），或者结论句加 \"stamp\": {{\"text\": \"2–5 字\"}} 盖个章")
+    elif pauses:
+        warn.append("停顿句（画面不动，留给观众想一下）：" + "、".join(f"第{no}句「{ln.get('text')}」" for no, ln, _, _ in pauses) + "。只适合提问 / 结论；不是的话给那一镜加一步")
+    if len(lines) >= 8 and pics > pic_max(n):
+        same = []   # 同一章里连着两镜用同一种件：最好并（两个 number 并成一个 values 列表）
+        for a, b in zip(shots, shots[1:]):
+            ta, tb = a["shot"].get("type"), b["shot"].get("type")
+            if ta == tb and ta not in ("fork", "statement", "title") and any(b["lines"][0] is ln for c in chs for ln in (c.get("lines") or [])[1:] if any(a["lines"][0] is x for x in c.get("lines") or [])):
+                f = {"number": "values（units 跟着加）", "object": "（换成 steps / checklist，一条一样东西）", "compare": "（换成 steps / checklist）"}.get(ta, "rows / nodes / items")
+                same.append(f"删掉第{b['first']}句的 shot，把它的内容并进第{a['first']}句那一镜的 {f}")
+        busy = "；".join(f"「{c.get('name')}」{len(c.get('lines') or [])} 句 {sum(1 for l in c.get('lines') or [] if l.get('shot'))} 镜" for c in chs if sum(1 for l in c.get("lines") or [] if l.get("shot")) > 1)
+        msg = (f"画面换得太勤：{n} 句换了 {pics} 个画面（目标 ≤ {pic_max(n)} 个，一个画面撑 2 句以上；标杆样片 3.5 句）。"
+               + (f"最小改法：{'；'.join(same)}。" if same else "最小改法：一章只在第一句写 shot，把这章的几句改写成在说这个画面上的第 1、2、3 条。")
+               + f"开了好几镜的章：{busy or '无'}")
+        (err if pics > pic_hard(n) else warn).append(msg)
+    stamps = [x["tag"] for x in shots if x["shot"].get("stamp")]
+    if len(stamps) > 2: warn.append(f"盖了 {len(stamps)} 个章（{'、'.join(stamps)}）：章是全片的重音，最多 2 个，只留最狠的那一两句（样片全片只盖一次）")
+    lists = [x for x in shots if x["shot"].get("type") in ("steps", "checklist")]   # 纯文字清单：什么都装得下，模型会全往里塞，整片像几页 PPT（11-17 实测 4 章全是 steps）
+    if len(shots) >= 3 and len(lists) > max(2, len(shots) // 3):
+        tips = []
+        for x in lists[:-1]:   # 留最后一个（片尾的「下一步」用 steps 正合适），前面的给出换法
+            rows = [str(r.get("text", "")) for r in x["shot"].get("rows") or [] if isinstance(r, dict)]
+            if sum(1 for r in rows if re.search(r"\d", r)) >= 2: how = "number（values 写这几个数，units 写说明）或 bars（rows 一条一个数）"
+            elif re.search(r"路|选|还是", " ".join(str(l.get("text", "")) for l in x["lines"])): how = "fork（paths 一条路一个，第一句长出来，之后一句划掉一条）"
+            else: how = "cards（items 一项一样东西，配 icon）或 object（一样认得出的东西）"
+            tips.append(f"{x['tag']} 的 {x['shot'].get('type')} 换成 {how}")
+        err.append(f"{len(lists)} 个画面都是文字清单（steps / checklist），全片最多 {max(2, len(shots) // 3)} 个：清单只是一行行字，不是画面。最小改法：{'；'.join(tips)}。字幕不用动")
     run = 0
     for x in shots:
         run = run + 1 if x["shot"].get("type") in ("statement", "title") else 0

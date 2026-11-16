@@ -4,16 +4,16 @@
   - 太空：主画面区（顶栏以下、字幕以上）亮的东西太少
   - 偏上：主体挤在上半部、下面空着
   - 出画：亮的东西贴到左右边
-  - 不动：同一镜里这一句和上一句几乎一样（这句话没在画面上演出来）
+  - 不动：同一镜里这一句和上一句几乎一样。说了数的句子一定要动；其余的算停顿句，最多占 1/5
 看图模型看不准这几样（它看缩小的拼图），这里按像素量。结果写到 review/frame_qa.json。"""
-import io, json, sys
+import io, json, re, sys
 from pathlib import Path
 
 SKILL = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SKILL / "engine"))
 import render  # noqa: E402
 
-Z0, Z1 = 330, 1420          # 主画面区：顶栏 + 章节小标以下、字幕以上
+Z0, Z1 = 450, 1420          # 主画面区：顶栏、章节小标、章的大关键词以下，字幕以上
 LUMA = 90                   # 比这个亮才算"东西"（背景光晕在 40 以下）
 
 
@@ -45,8 +45,9 @@ def main():
     bar = 60 / (f.get("bpm") or 112) * 4; ph = f.get("phase") or 0
     lines = []
     for c in f.get("chapters") or []:
-        for ln in c.get("lines") or []:
-            lines.append({"text": ln.get("text", ""), "new": bool(ln.get("shot")), "type": (ln.get("shot") or {}).get("type")})
+        for j, ln in enumerate(c.get("lines") or []):
+            sh = ln.get("shot") or (c.get("shot") if j == 0 else None)   # 章上的 shot = 第一句的
+            lines.append({"text": ln.get("text", ""), "new": bool(sh), "type": (sh or {}).get("type")})
     shot_type = None
     for i, ln in enumerate(lines):
         if ln["new"]: shot_type = ln["type"]
@@ -61,16 +62,21 @@ def main():
         return out
     res = render.with_page(proj, go)
 
-    issues = []
+    issues, still = [], []
     for i, (ln, r) in enumerate(zip(lines, res)):
         n, ty, msg = i + 1, ln["type"], []
         if ty in ("title", "statement", "number") or not ln["last"]: pass   # 大字卡、大数字本来就只占中间一条；一镜没出齐的句子不量空不空
         elif r["lit"] < 0.012 or r.get("span", 0) < 0.22: msg.append(f"画面太空（亮的部分只占 {r['lit']:.1%}，上下只铺了 {r.get('span', 0):.0%}）：条目太少就换个件，或给条目加 icon")
         elif r.get("center", 875) < 720 and r.get("bottom", Z1) < 1150: msg.append(f"主体偏上（中心在 {r['center']}，下面 {Z1 - r['bottom']}px 空着）")
         if r["edge"]: msg.append("有东西贴到画面左右边（可能出画或被裁）")
-        if "changed" in r and r["changed"] < 0.004: msg.append(f"和上一句画面几乎一样（只变了 {r['changed']:.1%}）：这一句没在画面上演出来，给这一镜加一条这句说的东西，或这句开新镜")
+        if "changed" in r and r["changed"] < 0.004:
+            still.append(n)
+            if re.search(r"\d", ln["text"]): msg.append(f"和上一句画面几乎一样（只变了 {r['changed']:.1%}），可这句说了数：把这个数做成这一镜的下一条")
         r.update(line=n, text=ln["text"], type=ty)
         for m in msg: issues.append({"line": n, "type": ty, "problem": m})
+    quiet = [x for x in still if not re.search(r"\d", lines[x - 1]["text"])]
+    if len(quiet) > max(1, len(lines) // 5):   # 停顿句（提问 / 结论）留 1/5 的名额，和 check_film.py 一样；超了才报
+        for x in quiet: issues.append({"line": x, "type": lines[x - 1]["type"], "problem": f"画面不动的句子太多（{len(quiet)} 句，最多 {max(1, len(lines) // 5)} 句）：这句给这一镜加一条它说的东西，或加 stamp 盖个章"})
     (proj / "review").mkdir(exist_ok=True)
     (proj / "review/frame_qa.json").write_text(json.dumps({"issues": issues, "frames": res}, ensure_ascii=False, indent=1), encoding="utf-8")
     if "--json" in a: print(json.dumps(issues, ensure_ascii=False)); return

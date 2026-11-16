@@ -31,12 +31,12 @@ function start(F) {
   const LINES = [], SHOTS = [], CHAPS = [];
   (F.chapters || []).forEach((ch, ci) => {
     const pal = NEON[ch.color] || NEON.cyan;
-    const C = { i: ci, name: ch.name || '', en: (ch.en || '').toUpperCase(), col: pal.main, alt: pal.alt, first: LINES.length };
+    const C = { i: ci, name: ch.name || '', key: ch.key || '', en: (ch.en || '').toUpperCase(), col: pal.main, alt: pal.alt, first: LINES.length };
     CHAPS.push(C);
-    (ch.lines || []).forEach(ln => {
-      const i = LINES.length, t0 = PHASE + i * BAR;
-      if (ln.shot || !SHOTS.length || SHOTS[SHOTS.length - 1].ch !== C) {
-        const d = ln.shot || { type: 'statement', big: ln.text };
+    (ch.lines || []).forEach((ln, j) => {
+      const i = LINES.length, t0 = PHASE + i * BAR, sh = ln.shot || (j === 0 ? ch.shot : null);   // 画面可以写在章上（chapter.shot = 这章第一镜）
+      if (sh || !SHOTS.length || SHOTS[SHOTS.length - 1].ch !== C) {
+        const d = sh || { type: 'statement', big: ln.text };
         SHOTS.push({ d, ch: C, first: i, t0, span: 0 });
       }
       const S = SHOTS[SHOTS.length - 1]; S.span++;
@@ -100,11 +100,39 @@ function start(F) {
     });
   }
 
-  /* 一镜的小标题（可选）：shot.head */
-  function head(fr, t, S, a) {
+  /* 章的大关键词（chapter.key，整章不变，观众记住的那个词）+ 一镜的小标题（shot.head，可选）。
+   * 有 key：key 大字在上、head 小字在下；没有 key：head 照旧一行 52 号字 */
+  function head(fr, t, S, L, a, col) {
+    const C = L.ch;
+    if (C.key) {
+      const kc = ss(t, PHASE + C.first * BAR, PHASE + C.first * BAR + 0.32);
+      let size = 96; while (size > 56 && fr.measure(C.key, { font: 'sansh', size, track: 3 }) > W - 2 * X0) size -= 4;
+      fr.text(C.key, X0, HEAD_Y + 8 + (1 - kc) * 16, { font: 'sansh', size, track: 3, align: 'l', a: kc, grad: [[0, '#FFFFFF'], [1, mix('#FFFFFF', col, 0.55)]], glow: 26, glowColor: col, glowA: 0.45 });
+      if (S.d.head) { const k = ss(t, S.t0, S.t0 + 0.3) * a; fr.text(S.d.head, X0 + 2, HEAD_Y + 92, { font: 'sansr', size: 34, track: 3, color: INK.text, align: 'l', a: 0.85 * k }); }
+      return;
+    }
     if (!S.d.head) return;
     const k = ss(t, S.t0, S.t0 + 0.3) * a;
     fr.text(S.d.head, X0, HEAD_Y + (1 - k) * 14, { font: 'sansh', size: 52, track: 2, color: INK.white, align: 'l', a: k });
+  }
+
+  /* 盖章（shot.stamp = {text, at}）：任何件上都能叠一个 2–4 字的章，在第 at 句（从 0 数，默认这一镜最后一句）的重拍上砸下来。
+   * 给"结论 / 情绪落点"那一句一个画面；at 只是兼容旧稿，检查脚本只允许最后一句（样片里价格掉到 39 之后盖的「白干」） */
+  function stamp(fr, t, S, col) {
+    const st = typeof S.d.stamp === 'string' ? { text: S.d.stamp } : S.d.stamp; if (!st || !st.text) return;   // "stamp": "白干" 也认
+    const at = clamp(st.at == null ? S.span - 1 : Number(st.at), 0, S.span - 1);
+    const items = (S.d.values || S.d.rows || S.d.nodes || S.d.items || S.d.paths || []).length;
+    const t0 = S.t0 + at * BAR + (S.span === 1 || items > at ? 2 * BEAT : 0);   // 这一句还要出最后一条：先让那条出来，第三拍再砸章
+    if (t < t0) return;
+    const k = E.out3(seg(t, t0, t0 + 0.22)), red = NEON.red.main, txt = String(st.text);
+    const size = txt.length <= 2 ? 112 : txt.length === 3 ? 96 : txt.length === 4 ? 80 : 68, w = fr.measure(txt, { font: 'sansh', size, track: 6 }) + 70, h = size + 50;
+    const sy = S.d.type === 'number' ? (S.d.bar ? 1250 : 1190) : 1350;   // 落在主体下面的空处（大数字下面；列表类在最后一条下面、字幕上面），不压条目
+    fr.g({ at: [W * 0.64, sy], rot: -0.12, s: lerp(1.7, 1, k), a: k }, () => {
+      fr.rect(-w / 2, -h / 2, w, h, { r: 14, fill: '#120A12', fa: 0.86 });
+      fr.rect(-w / 2, -h / 2, w, h, { r: 14, color: red, w: 7, glow: 22 });
+      fr.text(txt, 0, 4, { font: 'sansh', size, track: 6, color: red, glow: 20 });
+    });
+    if (k < 1) fr.flash(0.08 * (1 - k), red);
   }
 
   /* 字幕：左边一条章节色竖线 + 一行粗黑体，关键词染章节色；下面一条短线随小节走完 */
@@ -147,12 +175,12 @@ function start(F) {
       const step = Math.min(S.span - 1, Math.max(0, Math.floor((t - S.t0) / BAR)));
       const ctx = { t, lt: t - S.t0, st: t - (S.t0 + step * BAR), step, span: S.span, bar: BAR, beat: BEAT, col, alt, d: S.d, k: inK * outK, final: S.ch.i === CHAPS.length - 1 && !S.next, X0 };
       const fn = SCENES[S.d.type] || SCENES.statement;
-      if (t >= S.t0 - 0.001) fr.g({ a: ctx.k }, () => fn(fr, ctx));
+      if (t >= S.t0 - 0.001) fr.g({ a: ctx.k }, () => { fn(fr, ctx); if (S.d.type !== 'title') stamp(fr, t, S, col); });
 
       /* 换章时一下很淡的章节色闪光 */
       if (L.ch.first === L.i && L.i > 0) fr.flash(0.10 * (1 - seg(t, L.t0, L.t0 + 0.25)) * (t >= L.t0 ? 1 : 0), col);
 
-      if (S.d.type !== 'title' && S.d.type !== 'statement') { kicker(fr, t, L, col); head(fr, t, S, outK); }
+      if (S.d.type !== 'title' && S.d.type !== 'statement') { kicker(fr, t, L, col); head(fr, t, S, L, outK, col); }
       topBar(fr, t, L, col);
       subtitle(fr, t, L, col);
       note(fr, t, L);
