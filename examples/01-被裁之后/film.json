@@ -95,7 +95,8 @@
     "stamp": {
      "text": "没回音"
     },
-    "note": "示例"
+    "note": "示例",
+    "pick": -1
    },
    "lines": [
     {

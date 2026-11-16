@@ -10,6 +10,7 @@ TYPES = {   # 件名: (必填字段, {列表字段: (最少, 最多)})
     "statement": (["big"], {}),
     "number": (["values"], {"values": (1, 4)}),
     "bars": (["rows"], {"rows": (2, 6)}),
+    "ledger": (["rows"], {"rows": (2, 5)}),
     "ring": (["value"], {"rows": (0, 5)}),
     "timeline": (["nodes"], {"nodes": (2, 5)}),
     "fork": (["paths"], {"paths": (2, 4)}),
@@ -50,8 +51,12 @@ def cn2num(t):   # 两百 → 200，两万 → 20000，十年 → 10，三千五
 
 def numbers_in(text):
     out = set()
-    for m in re.findall(r"\d+(?:\.\d+)?", text.replace(",", "")):
+    text = text.replace(",", "")
+    for m in re.findall(r"\d+(?:\.\d+)?", text):
         v = float(m); out.add(v)
+    for m in re.finditer(r"(\d+(?:\.\d+)?)\s*([万千亿])", text):   # 「12万」= 12 也 = 120000：字幕写 12万、画面写 120000 是同一个数（11-17 两边各报一个错，模型改不动）
+        out.add(round(float(m.group(1)) * {"千": 1e3, "万": 1e4, "亿": 1e8}[m.group(2)], 2))
+    text = re.sub(r"(\d)\s*[万千亿]", r"\1 ", text)   # 已经算过的单位，下面不再单独当成 10000
     for m in re.finditer(r"百分之([零一二两三四五六七八九十]+)", text):
         v = cn2num(m.group(1))
         if v: out.add(float(v))
@@ -62,6 +67,12 @@ def numbers_in(text):
             continue
         v = cn2num(m.group(0))
         if v: out.add(float(v))
+    return out
+
+
+def loose_nums(text):   # 宽一点：单个汉字数（三次、两条）也算上，只用来"放行"，不用来抓编造
+    out = set(numbers_in(text))
+    for ch in re.findall(r"[一二两三四五六七八九十]", text): out.add(float(CN.get(ch, 10)))
     return out
 
 
@@ -84,7 +95,7 @@ def derive(nums):
 # 每种件最多能"变"几次：一镜的句子比这多，多出来的句子画面不动
 def capacity(d):
     ty = d.get("type"); L = lambda k: len(d.get(k) or [])
-    return {"title": 1, "statement": 1, "number": max(1, L("values")), "bars": L("rows"), "ring": 1 + L("rows"),
+    return {"title": 1, "statement": 1, "number": max(1, L("values")), "bars": L("rows"), "ledger": L("rows") + (1 if d.get("total") else 0), "ring": 1 + L("rows"),
             "timeline": max(L("nodes"), 2 if d.get("breakAt") is not None else 1),   # 一镜撑几句时一句亮一个节点
             "fork": 1 if d.get("focus") is not None else max(2, L("paths") + 1),   # 第一句长出路，之后一句划掉一条，最后一句点亮留下的那条
             "compare": 2,
@@ -126,6 +137,9 @@ def main():
     bpm = film.get("bpm", 112); bar = 60 / bpm * 4
     chs = film.get("chapters") or []
     if not chs: err.append("没有 chapters")
+    mu = film.get("music") or {}
+    if mu.get("style") and mu["style"] not in ("drive", "tension", "warm", "lofi"): err.append(f"music.style「{mu['style']}」不认识，只能是 drive / tension / warm / lofi")
+    if mu.get("song") and not Path(str(mu["song"])).expanduser().exists(): err.append(f"music.song 指向的歌不存在：{mu['song']}（重跑 scripts/fit_song.py，或删掉 music.song 改用合成配乐）")
     for ci, ch in enumerate(chs, 1):   # 画面写在章上（chapter.shot）= 这章第一句的 shot
         if ch.get("shot") and (ch.get("lines") or []):
             if ch["lines"][0].get("shot"): err.append(f"第{ci}章「{ch.get('name', '')}」章上写了 shot，第一句又写了 shot：只留章上那个")
@@ -189,7 +203,20 @@ def main():
         if dup: warn.append(f"{tag} 条目下面的小字「{'」「'.join(dup)}」和上面的大字重复了：小字写一句补充（数字、条件、结果），没有就不写")
         if ty == "steps" and any(re.fullmatch(r"\s*0?\d+\s*", str(r.get("note", "x"))) for r in d.get("rows") or []): warn.append(f"{tag} steps 的 note 只写了编号，编号会自动画，note 留空或写一句补充")
         if ty == "fork" and d.get("focus") is not None and not (0 <= int(d["focus"]) < len(d.get("paths") or [])): err.append(f"{tag} focus 超出 paths 范围")
-        if ty == "fork" and d.get("pick") is not None and not (0 <= int(d["pick"]) < len(d.get("paths") or [])): err.append(f"{tag} pick 超出 paths 范围")
+        if ty == "fork" and d.get("pick") not in (None, -1, "none") and not (0 <= int(d["pick"]) < len(d.get("paths") or [])): err.append(f"{tag} pick 超出 paths 范围（几条全是死路就写 -1）")
+        DEAD = r"没回音|没人|卡住|卡在|不够|没了|亏|难|贵|太高|进不去|没戏|走不通|换不了"
+        if ty == "fork" and d.get("focus") is None and d.get("pick") not in (-1, "none"):
+            pk = (d.get("paths") or [])[int(d["pick"]) if d.get("pick") is not None else -1] if d.get("paths") else {}
+            if isinstance(pk, dict) and re.search(DEAD, str(pk.get("label", "")) + str(pk.get("sub", ""))):
+                err.append(f"{tag} 最后点亮的那条「{pk.get('label')}」（{pk.get('sub', '')}）看着是死路：pick 是留下来、能走的那条。几条全是死路就写 \"pick\": -1（一条条全划掉）；能走的路在后面的章讲")
+        if ty == "ledger":
+            for i, r in enumerate(d.get("rows") or []):
+                if not isinstance(r, dict) or not isinstance(r.get("value"), (int, float)) or r.get("op", "+") not in ("+", "-", "−"):
+                    err.append(f"{tag} ledger 的 rows[{i}] 要写成 {{\"label\": \"卖价\", \"value\": 30}}（减的加 \"op\": \"-\"），value 写数字"); break
+        if ty == "bars":   # 横条的数要是字幕里说到的（11-17：模型为了躲"清单最多 2 个"，编了「1 条规矩 / 3 条规矩」这种没意义的数）
+            said = set().union(set(), *[loose_nums(str(ln.get("text", ""))) for ln in s["lines"]])
+            bad = [f"rows[{i}]「{r.get('label')} {r.get('value')}」" for i, r in enumerate(d.get("rows") or []) if isinstance(r, dict) and isinstance(r.get("value"), (int, float)) and float(r["value"]) not in said]
+            if bad: err.append(f"{tag} bars 的 {'、'.join(bad)} 这个数字幕里没说：横条只用来比字幕里说到的几个数。最小改法：没有数可比就换成 cards（一项一样东西）；是一笔笔账就换成 ledger")
         if ty == "timeline" and d.get("breakAt") is not None and not (0 <= int(d["breakAt"]) < len(d.get("nodes") or []) - 1): err.append(f"{tag} breakAt 要小于节点数 - 1")
         if ty == "timeline" and d.get("breakStep") is not None and int(d["breakStep"]) >= len(s["lines"]): err.append(f"{tag} breakStep={d['breakStep']} 但这一镜只有 {len(s['lines'])} 句，裂不到")
         for pth, v in [(p, v) for p, v in icon_fields(d)]:
@@ -208,8 +235,12 @@ def main():
             elif isinstance(o, dict): yield from (x for k, v in o.items() if k not in HIDDEN | {"note", "breakAt", "breakStep", "pick", "focus", "at", "max", "pct"} for x in leaves(v))
             elif isinstance(o, list): yield from (x for v in o for x in leaves(v))
         on_screen = set().union(set(), *[numbers_in(x) for x in leaves(d)])
+        if ty == "ledger" and d.get("total"):   # 合计是程序算出来画上去的
+            tot = sum((-1 if r.get("op") in ("-", "−") else 1) * float(r.get("value") or 0) for r in d.get("rows") or [] if isinstance(r, dict) and isinstance(r.get("value"), (int, float)))
+            on_screen |= {round(tot, 2), round(abs(tot), 2)}
         for j, ln in enumerate(s["lines"]):   # 字幕说的数，这一镜画面上要有（说"上了40个商品"，画面上就得有 40）
-            miss = sorted(v for v in numbers_in(str(ln.get("text", ""))) if v >= 3 and v not in on_screen and not (1900 <= v <= 2100))
+            same = lambda v: {round(v * k, 2) for k in (1, 1e3, 1e4, 1e8, 1e-3, 1e-4)}   # 12万 / 120000 / 12（suffix 写「万」）是同一个数
+            miss = sorted(v for v in numbers_in(str(ln.get("text", ""))) if v >= 3 and not (same(v) & on_screen) and not (1900 <= v <= 2100))
             if miss: err.append(f"第{s['first'] + j}句「{ln.get('text')}」说了 {'、'.join(f'{v:g}' for v in miss)}，可这一镜（{ty}）画面上没有：把它写成这一镜的一条（values / rows / items 里，或 count、label），换不进去就换一个能放下它的件；或者这句不说数")
         for j in range(cap, span):   # 这一镜多出来的句子：画面不动（停顿句）
             pauses.append((s["first"] + j, s["lines"][j], tag, ty))
@@ -222,7 +253,7 @@ def main():
         if ty in ("steps", "checklist", "cards", "cycle", "fork"):
             k = len(d.get("rows") or d.get("items") or d.get("nodes") or d.get("paths") or [])
             for ln in s["lines"]:
-                m = re.search(r"([0-9]+|[一二两三四五六七八九十]) ?(步|件事|条路)", str(ln.get("text", "")))   # "一条视频"的"条"是量词，不核对
+                m = re.search(r"(?<!第)([0-9]+|[二两三四五六七八九十]) ?(步|件事|条路)", str(ln.get("text", "")))   # "一条视频"的"条"是量词，不核对；「先走一步」「第一步」是说法，不是条数
                 if m and int(cn2num(m.group(1)) if not m.group(1).isdigit() else m.group(1)) != k:
                     err.append(f"{tag} 字幕说「{m.group(0)}」，但画面只有 {k} 条：让两边对上（改字幕里的数，或补齐条目）")
         if ty == "bars" and len({str(r.get("value")) for r in d.get("rows") or []}) == 1 and len(d.get("rows") or []) > 1: err.append(f"{tag} bars 每条的值都一样，比不出大小：换成有差别的真实数，或者换件（checklist / steps）")
@@ -330,7 +361,7 @@ def main():
         tips = []
         for x in lists[:-1]:   # 留最后一个（片尾的「下一步」用 steps 正合适），前面的给出换法
             rows = [str(r.get("text", "")) for r in x["shot"].get("rows") or [] if isinstance(r, dict)]
-            if sum(1 for r in rows if re.search(r"\d", r)) >= 2: how = "number（values 写这几个数，units 写说明）或 bars（rows 一条一个数）"
+            if sum(1 for r in rows if re.search(r"\d", r)) >= 2: how = "ledger（一句记一笔账，合计自动算）、number（一个数在变）或 bars（几样东西比大小）"
             elif re.search(r"路|选|还是", " ".join(str(l.get("text", "")) for l in x["lines"])): how = "fork（paths 一条路一个，第一句长出来，之后一句划掉一条）"
             else: how = "cards（items 一项一样东西，配 icon）或 object（一样认得出的东西）"
             tips.append(f"{x['tag']} 的 {x['shot'].get('type')} 换成 {how}")

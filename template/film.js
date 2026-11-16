@@ -126,8 +126,9 @@ function start(F) {
     if (t < t0) return;
     const k = E.out3(seg(t, t0, t0 + 0.22)), red = NEON.red.main, txt = String(st.text);
     const size = txt.length <= 2 ? 112 : txt.length === 3 ? 96 : txt.length === 4 ? 80 : 68, w = fr.measure(txt, { font: 'sansh', size, track: 6 }) + 70, h = size + 50;
-    const sy = S.d.type === 'number' ? (S.d.bar ? 1250 : 1190) : 1350;   // 落在主体下面的空处（大数字下面；列表类在最后一条下面、字幕上面），不压条目
-    fr.g({ at: [W * 0.64, sy], rot: -0.12, s: lerp(1.7, 1, k), a: k }, () => {
+    const ty = S.d.type, sy = ty === 'number' ? (S.d.bar ? 1250 : 1190) : ty === 'ledger' ? 1352 : 1350;   // 落在主体下面的空处（大数字下面；列表类在最后一条下面、字幕上面），不压条目
+    const sx = ty === 'ledger' ? W * 0.3 : W * 0.64, sc = ty === 'ledger' ? 0.8 : 1;   // 算账的合计在右下，章挪到左下、小一点，夹在合计那行和字幕之间
+    fr.g({ at: [sx, sy], rot: -0.12, s: sc * lerp(1.7, 1, k), a: k }, () => {
       fr.rect(-w / 2, -h / 2, w, h, { r: 14, fill: '#120A12', fa: 0.86 });
       fr.rect(-w / 2, -h / 2, w, h, { r: 14, color: red, w: 7, glow: 22 });
       fr.text(txt, 0, 4, { font: 'sansh', size, track: 6, color: red, glow: 20 });

@@ -1,7 +1,7 @@
 // score.mjs — synthesises the film's soundtrack from scripts/cues.json into public/score.wav.
 // No samples, no dependencies: every sound is generated, so the same cues always give the same file.
 // Usage: node scripts/score.mjs            (reads scripts/cues.json)
-//        node scripts/score.mjs other.json
+//        node scripts/score.mjs other.json [out.wav]   (out.wav: write somewhere other than public/score.wav)
 import {readFileSync, writeFileSync, mkdirSync} from 'node:fs';
 
 const cues = JSON.parse(readFileSync(process.argv[2] ?? new URL('./cues.json', import.meta.url), 'utf8'));
@@ -204,6 +204,7 @@ const h = Buffer.alloc(44);
 h.write('RIFF', 0); h.writeUInt32LE(36 + data.length, 4); h.write('WAVE', 8); h.write('fmt ', 12);
 h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(2, 22); h.writeUInt32LE(SR, 24);
 h.writeUInt32LE(SR * 4, 28); h.writeUInt16LE(4, 32); h.writeUInt16LE(16, 34); h.write('data', 36); h.writeUInt32LE(data.length, 40);
-mkdirSync(new URL('../public/', import.meta.url), {recursive: true});
-writeFileSync(new URL('../public/score.wav', import.meta.url), Buffer.concat([h, data]));
-console.log(`public/score.wav  ${LEN}s  palette=${cues.palette ?? 'data'}  events=${(cues.events ?? []).length}  loop=${cues.loop !== false}`);
+const OUT = process.argv[3] ?? new URL('../public/score.wav', import.meta.url);
+if (!process.argv[3]) mkdirSync(new URL('../public/', import.meta.url), {recursive: true});
+writeFileSync(OUT, Buffer.concat([h, data]));
+console.log(`${process.argv[3] ?? 'public/score.wav'}  ${LEN}s  palette=${cues.palette ?? 'data'}  events=${(cues.events ?? []).length}  loop=${cues.loop !== false}`);

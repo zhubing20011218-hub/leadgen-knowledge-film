@@ -184,6 +184,30 @@ const SCENES = {
     }
   },
 
+  /* 算账：{rows:[{label, value, op?:'+'|'-'}], prefix?:'¥', suffix?:'元', total?:'每对赚'}
+   * 一句记一笔（加的绿、减的红），写了 total 就再多一句：画一道线，合计按上面几笔自动算出来——合计不用模型算，也编不出来 */
+  ledger(fr, c) {
+    const d = c.d, rows = d.rows || [], hasT = !!d.total, n = rows.length + (hasT ? 1 : 0), cur = current(c, n);
+    const pre = d.prefix || '', suf = d.suffix || '', sign = r => (r.op === '-' || r.op === '−' ? -1 : 1);
+    const total = rows.reduce((a, r) => a + sign(r) * (Number(r.value) || 0), 0), dec = decimalsOf(rows.map(r => r.value));
+    const gap = rows.length <= 3 ? 165 : 140, y0 = 640 + (4 - Math.min(rows.length, 4)) * 30;   // 整组压在画面中部偏下，别全挤在上半截
+    rows.forEach((r, i) => {
+      const a0 = at(c, i, n), k = E.out3(seg(c.lt, a0, a0 + 0.4)); if (k <= 0) return;
+      const y = y0 + i * gap, hot = i === cur, neg = sign(r) < 0, colr = neg ? NEON.red.main : NEON.green.main;
+      fr.text(r.label, X0, y, { font: 'sansh', size: 62, color: INK.white, align: 'l', a: k * (hot ? 1 : 0.7) });
+      fr.text((i === 0 && !neg ? '' : neg ? '− ' : '+ ') + pre + fmt(Number(r.value) || 0, dec) + suf, XR, y, { font: 'sansh', size: 68, color: hot ? colr : mix(colr, '#888', 0.4), align: 'r', a: k, glow: hot ? 18 : 0 });
+      fr.line(X0, y + 52, XR, y + 52, { color: '#FFFFFF', w: 1, a: 0.08 * k });
+    });
+    if (hasT) {
+      const a0 = at(c, n - 1, n), k = E.out3(seg(c.lt, a0, a0 + 0.5)); if (k <= 0) return;
+      const y = y0 + rows.length * gap + 40, colr = total < 0 ? NEON.red.main : NEON.green.main;
+      fr.line(X0, y - 50, X0 + CW * k, y - 50, { color: c.col, w: 4, glow: 12 });
+      fr.text(String(d.total), X0, y + 34, { font: 'sansh', size: 64, color: INK.white, align: 'l', a: k });
+      const v = total * E.out3(seg(c.lt, a0 + 0.1, a0 + 0.8));
+      fr.text((total < 0 ? '− ' : '') + pre + fmt(Math.abs(v), dec) + suf, XR, y + 44, { font: 'sansh', size: 150, color: colr, align: 'r', a: k, glow: 30 });
+    }
+  },
+
   /* 横条对比：{rows:[{label, value, tag?}], unit?:'%', max?} —— 一句亮一条，最新的那条最亮 */
   bars(fr, c) {
     const d = c.d, rows = d.rows || [], n = rows.length, cur = current(c, n);
@@ -258,13 +282,13 @@ const SCENES = {
   /* 岔路：{paths:[{label, sub}], pick: 2} —— 第一句路长出来，之后每句划掉一条，最后一句点亮 pick
    * {paths, focus: 1} —— 只是"现在讲这一条"：这一条亮、其他变暗，不划掉（逐条讲几条路时，每句一镜用 focus） */
   fork(fr, c) {
-    const d = c.d, paths = d.paths || [], n = paths.length, pick = d.pick != null ? Number(d.pick) : n - 1;
+    const d = c.d, paths = d.paths || [], n = paths.length, none = d.pick === -1 || d.pick === 'none', pick = none ? -1 : d.pick != null ? Number(d.pick) : n - 1;   // pick: -1 = 一条都不留（几条全是死路）
     if (d.focus != null) return forkFocus(fr, c, paths, Number(d.focus));
     const ox = CX, oy = 1300, cy = 660, cw = Math.min(300, (CW - 30 * (n - 1)) / n), ch = 210;
     const xs = paths.map((_, i) => X0 + cw / 2 + i * (CW - cw) / Math.max(n - 1, 1));
     const kills = paths.map((_, i) => i).filter(i => i !== pick);
-    const killAt = i => { const j = kills.indexOf(i); if (j < 0) return 1e9; const steps = Math.max(c.span - 2, 1); return c.span <= 1 ? 0.5 + j * c.beat : (1 + Math.min(j, steps - 1)) * c.bar + Math.max(0, j - (steps - 1)) * c.beat; };
-    const pickAt = c.span <= 1 ? 0.5 + kills.length * c.beat : Math.max(c.span - 1, 1) * c.bar;
+    const killAt = i => { const j = kills.indexOf(i); if (j < 0) return 1e9; const steps = Math.max(c.span - (none ? 1 : 2), 1); return c.span <= 1 ? 0.5 + j * c.beat : (1 + Math.min(j, steps - 1)) * c.bar + Math.max(0, j - (steps - 1)) * c.beat; };
+    const pickAt = none ? 1e9 : c.span <= 1 ? 0.5 + kills.length * c.beat : Math.max(c.span - 1, 1) * c.bar;
     fr.spark(ox, oy, 8, c.col, E.out3(seg(c.lt, 0, 0.3)));
     paths.forEach((p, i) => {
       const k = E.out3(seg(c.lt, 0.05 + i * 0.12, 0.6 + i * 0.12)), kx = ss(c.lt, killAt(i), killAt(i) + 0.3), kp = i === pick ? E.out3(seg(c.lt, pickAt, pickAt + 0.4)) : 0;

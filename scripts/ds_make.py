@@ -110,7 +110,7 @@ REVIEW_SYS = """你是竖屏知识短片的严格评审。给你一张拼图：�
 5. 开头三格能不能让人停下来？结尾有没有给出下一步？
 不要报：配色风格、霓虹发光、字体（这些是固定的样式）；不要客套。
 改法不许：编 brief 里没有的数字、加联系方式或"扣1 / 领资料 / 私我"这类诱导互动的话、承诺收入；结尾的下一步只能是主页 / 合集 / 评论区。
-改法只能用现有的件：title statement number bars ring timeline fork(可加 focus) compare checklist steps cycle cards object flow；
+改法只能用现有的件：title statement number bars ledger ring timeline fork(可加 focus) compare checklist steps cycle cards object flow；
 "缺一样认得出的东西"就建议 object（一堆写 count）或给条目加 icon，图标只能从这些里选：{ICONS}。
 每个问题归一类：
 - content：改 film.json 就能解决（换一个件、删几条、缩短一段字、加 head、加图标、加 stamp……），fix 写清楚怎么改；
@@ -156,7 +156,7 @@ def pick_hook(brief):
 
 def plan_lines(brief):
     """先替模型把句数、镜数、开头结尾怎么写算好（弱模型数不清句数，填空比自己数稳）。"""
-    bpm = MOOD_BPM.get(brief.get("mood"), 112); n = round(brief.get("seconds", 30) / (60 / bpm * 4))
+    bpm = (brief.get("music") or {}).get("bpm") or MOOD_BPM.get(brief.get("mood"), 112); n = round(brief.get("seconds", 30) / (60 / bpm * 4))   # 用自己的歌：按歌的速度排句数（fit_song.py 写进 brief.music.bpm）
     raw = [n * w for _, w in BEATS]; cnt = [max(1, int(x)) for x in raw]
     for i in sorted(range(len(raw)), key=lambda i: raw[i] - int(raw[i]), reverse=True):
         if sum(cnt) >= n: break
@@ -172,7 +172,7 @@ def plan_lines(brief):
               "③ 照 pics 在章上写 shot（这章的画面，写在 lines 前面）：挑一个能把这几条都装下的件（几条说的是不同的事就用 steps / checklist / cards，条目里可以写数），values / rows / nodes / items 按 pics 的顺序一次写好，stamp 盖章也算一条；"
               "最后写 lines：句子里不写 shot，第 k 句说的就是第 k 条，字幕里说的数画面上必须有；"
               "④ 某条装不进这个件：先换个说法，让这句说画面上有的东西；还不行，才在这章里开第二镜。"
-              "相邻两章换不同的件；steps / checklist 只是一行行字，全片最多用 2 次（片尾「下一步」用 steps 正合适）——有数就用 number / bars / ring，几条路用 fork，几样东西用 cards / object，从 A 到 B 用 flow，同一件事两种情况用 compare。"
+              "相邻两章换不同的件；steps / checklist 只是一行行字，全片最多用 2 次（片尾「下一步」用 steps 正合适）——有数就用 number / bars / ring，一笔笔算账用 ledger（合计程序自动算），几条路用 fork（全是死路写 pick: -1，pick 不能是死路），几样东西用 cards / object，从 A 到 B 用 flow，同一件事两种情况用 compare。"
               f"全片 {n} 句最多 {pic_max(n)} 个画面；最多 {pause_max(n)} 句可以画面不动（只给提问、结论，而且不许说数字）；"
               "一章最后那句是结论或情绪落点（白干、没回音、做成了）时，给这一镜加 stamp 盖一个 2–5 字的章，这句就有画面了。")
     ends = (f"开场用「{hook}」：{how}，第一镜用 {first}；不要用「大家好」「你知道吗」。"
@@ -228,6 +228,8 @@ def main():
         film = json.loads((proj / "film.json").read_text(encoding="utf-8"))
     else:
         print("== 写 film.json"); film = chat(key, base, model, [system, ask], led, "写")
+        mu = json.loads(brief).get("music") or {}
+        if mu.get("style"): film["music"] = {**(film.get("music") or {}), "style": mu["style"]}   # 配乐风格照 brief，不交给模型
     convo = [system, ask, {"role": "assistant", "content": json.dumps(film, ensure_ascii=False)}]
 
     def save(f): (proj / "film.json").write_text(json.dumps(f, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -300,6 +302,9 @@ def main():
     print(f"== 最后一版画面体检：{len(qa)} 处" + ("（不影响出片，想更好就手动改 film.json）" if qa else " ✓"))
     for q in qa: print(f"   - 第{q['line']}句（{q['type']}）{q['problem']}")
     print(f"== 完成：{proj}/film.json · 拼图 {proj}/review/sheet.jpg · 这次花 ¥{led.total:.4f}，这条片累计 ¥{sum(r['yuan'] for r in led.before + led.rows):.4f}")
+    song = (json.loads(brief).get("music") or {}).get("song")
+    if song and not (film.get("music") or {}).get("song"):   # brief 里登记了自己的歌（fit_song.py 写的，已确认能商用）：按这一稿的句数重新挑段落、对齐
+        print("== 对齐你的歌"); subprocess.run([py, str(SKILL / "scripts/fit_song.py"), str(proj), str(song), "--licensed"], check=True)
     if "--render" in a:
         subprocess.run(["bash", str(SKILL / "scripts/build.sh"), str(proj)], check=True, env={**os.environ, "PYTHON": py})
 

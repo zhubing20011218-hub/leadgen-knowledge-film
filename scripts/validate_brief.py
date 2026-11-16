@@ -20,6 +20,7 @@ brief.json 字段：
   banned     不出现的说法（数组，可空）
 """
 import json
+from pathlib import Path
 import re
 import sys
 
@@ -84,6 +85,12 @@ def check(b):
     HOOKS = ('熟悉的场景', '人生剧本', '反常识的数', '先让他选', '一句扎心的话', '前后对比', '一大堆', '结局先说')
     if b.get('hook') and b['hook'] not in HOOKS:
         errs.append(f'hook「{b["hook"]}」不认识，只能是：' + ' '.join(HOOKS) + '（或不写）')
+    mu = b.get('music') or {}
+    if mu and not isinstance(mu, dict): errs.append('music 要写成 {"style": "drive"} 或 {"song": "歌的路径"}（用歌先跑 scripts/fit_song.py）')
+    elif mu.get('style') and mu['style'] not in ('drive', 'tension', 'warm', 'lofi'):
+        errs.append(f'music.style「{mu["style"]}」不认识，只能是：drive（律动）tension（紧张）warm（温暖）lofi（轻松）')
+    elif mu.get('song') and not Path(str(mu['song'])).expanduser().exists():
+        errs.append(f'music.song 指向的歌不存在：{mu["song"]}')
     if b.get('example'):
         warns.append('example = true：数字是编的，只能试做；片上每个数字都要标「示例」，这条片不能发布')
 
