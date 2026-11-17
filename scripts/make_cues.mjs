@@ -29,6 +29,10 @@ const STYLES = {
     palette: 'data', lead: 'bell', kick: 2, clap: false, knock: true, swing: 0, hat16: false, bassEvery: 2, bed: {pump: 0.22, cutoff: 1400, gain: 0.14, bass: 2},
     chords: [['C3', 'C5 E5 G5 E5 C5 G5 E5 G5'], ['G2', 'B4 D5 G5 D5 B4 G5 D5 G5'], ['A2', 'A4 C5 E5 C5 A4 E5 C5 E5'], ['F2', 'A4 C5 F5 C5 A4 F5 C5 F5']],
   },
+  doc: {   // 纪录片：小调钢琴柱式和弦 + 长音铺底 + 很轻的打击，不抽吸（照 Vibe 知识大赏横屏讲概念系列的配乐路子：沉静、留白）
+    palette: 'data', lead: 'bell', kick: 2, clap: false, knock: false, swing: 0, hat16: false, bassEvery: 2, piano: true, bed: {pump: 0, cutoff: 900, gain: 0.08, bass: 4},
+    chords: [['A2', 'A3 C4 E4 A4 E4 C4 A3 C4'], ['F2', 'F3 A3 C4 F4 C4 A3 F3 A3'], ['C3', 'C4 E4 G4 C5 G4 E4 C4 E4'], ['G2', 'G3 B3 D4 G4 D4 B3 G3 B3']],
+  },
   lofi: {   // 轻松 / 聊天感：七和弦（Dm7 G7 Cmaj7 Am7），摇摆的八分音符，木鱼当军鼓
     palette: 'riso', lead: 'pluck', kick: 2, clap: false, knock: true, swing: 0.16, hat16: false, bassEvery: 2, bed: {pump: 0.15, cutoff: 1000, gain: 0.12, bass: 2},
     chords: [['D2', 'D4 F4 A4 C5 A4 F4 D4 F4'], ['G2', 'B3 D4 F4 A4 F4 D4 B3 D4'], ['C3', 'C4 E4 G4 B4 G4 E4 C4 E4'], ['A2', 'A3 C4 E4 G4 E4 C4 A3 C4']],
@@ -67,11 +71,15 @@ CH.forEach((c, i) => {
     bed.push({type: 'chord', notes, start: r3(a), end: r3(b + 0.12), gain: B.gain * (i === 0 ? 0.75 : 1), cutoff: B.cutoff * (lift ? 1.4 : 1), pump: {bpm: BPM, depth: B.pump}, fade: 0.06});
     if (lift) bed.push({type: 'chord', notes: notes.map((x) => up(x, 1)), start: r3(a), end: r3(gapStart + 0.12), gain: B.gain * 0.45, cutoff: B.cutoff * 1.8, pump: {bpm: BPM, depth: B.pump}, fade: 0.06, voices: 3});   // 反转后高八度再叠一层：像副歌一样变亮
     patterns.push({type: 'bass', every: B.bass, start: r3(a), end: r3(gapStart), notes: [up(ch.root, -1)], dur: r3(BEAT * B.bass * 0.97), gain: 0.26, pump: {bpm: BPM, depth: B.pump * 0.7}});
+    if (S.piano) {   // 每小节第一拍一记钢琴柱式和弦，第三拍轻一点再按一次（四拍都在小节线上，字幕换句那一下就是钢琴落下来）
+      const v = [...new Set([up(ch.root, 1), ...[...new Set(ch.arp)].slice(0, 3)])];
+      for (let t = a, k = 0; t < gapStart - 0.01; t += BAR / 2, k++) events.push({type: 'piano', t: r3(t), notes: v, dur: r3(BAR * 0.95), gain: k % 2 ? 0.16 : 0.26, bright: i >= turn ? 0.7 : 0.45});
+    }
     const arpInst = styleName === 'warm' ? 'bell' : 'pluck', sw = S.swing * BEAT;
     // 琶音：八分音符（正拍、反拍各一路）；lofi 的反拍往后拖一点（摇摆）
-    [0, 1].forEach((odd) => patterns.push({type: arpInst, every: 1, start: r3(a + odd * (BEAT / 2 + sw)), end: r3(gapStart), notes: ch.arp.filter((_, k) => k % 2 === odd),
+    if (!S.piano || i >= turn) [0, 1].forEach((odd) => patterns.push({type: arpInst, every: 1, start: r3(a + odd * (BEAT / 2 + sw)), end: r3(gapStart), notes: ch.arp.filter((_, k) => k % 2 === odd),
       gain: (i === 0 ? 0.07 : 0.055) * (arpInst === 'bell' ? 0.55 : 1), ...(arpInst === 'bell' ? {dur: 1.2} : {decay: styleName === 'lofi' ? 0.985 : 0.993}), ...(styleName === 'lofi' ? {bright: 0.2} : {})}));
-    patterns.push({type: 'hat', every: 1, start: r3(a + BEAT / 2 + sw), end: r3(gapStart), gain: 0.07});
+    patterns.push({type: 'hat', every: 1, start: r3(a + BEAT / 2 + sw), end: r3(gapStart), gain: S.piano ? 0.035 : 0.07});
     if (i === 0) {   // 开场章不上整套鼓，但每小节第一拍一下轻底鼓：前 3 秒决定划不划走，换画面要有一下"咚"
       patterns.push({type: 'kick', every: 4, start: r3(a), end: r3(gapStart), gain: 0.32});
     }

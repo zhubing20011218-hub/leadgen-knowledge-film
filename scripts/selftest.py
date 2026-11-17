@@ -64,9 +64,9 @@ for name, mutate, want in CASES:
         errs = [l for l in out.splitlines() if l.startswith("✗")]; want = "brief 里没有"
     report(f"拦下：{name}", code == 1 and any(want in e for e in errs), (errs or ["没报错"])[0][:120])
 
-print("== 4 四种配乐都能合成")
+print("== 4 五种配乐都能合成")
 with tempfile.TemporaryDirectory() as d:
-    for st in ("drive", "tension", "warm", "lofi"):
+    for st in ("drive", "tension", "warm", "lofi", "doc"):
         f = copy.deepcopy(film); f["music"] = {"style": st}; (Path(d) / "f.json").write_text(json.dumps(f, ensure_ascii=False), encoding="utf-8")
         cues = run("node", SKILL / "scripts/make_cues.mjs", Path(d) / "f.json")
         (Path(d) / "c.json").write_text(cues.stdout, encoding="utf-8")

@@ -87,8 +87,8 @@ def check(b):
         errs.append(f'hook「{b["hook"]}」不认识，只能是：' + ' '.join(HOOKS) + '（或不写）')
     mu = b.get('music') or {}
     if mu and not isinstance(mu, dict): errs.append('music 要写成 {"style": "drive"} 或 {"song": "歌的路径"}（用歌先跑 scripts/fit_song.py）')
-    elif mu.get('style') and mu['style'] not in ('drive', 'tension', 'warm', 'lofi'):
-        errs.append(f'music.style「{mu["style"]}」不认识，只能是：drive（律动）tension（紧张）warm（温暖）lofi（轻松）')
+    elif mu.get('style') and mu['style'] not in ('drive', 'tension', 'warm', 'lofi', 'doc'):
+        errs.append(f'music.style「{mu["style"]}」不认识，只能是：drive（律动）tension（紧张）warm（温暖）lofi（轻松）doc（纪录片）')
     elif mu.get('song') and not Path(str(mu['song'])).expanduser().exists():
         errs.append(f'music.song 指向的歌不存在：{mu["song"]}')
     if b.get('example'):

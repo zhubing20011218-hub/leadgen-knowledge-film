@@ -146,7 +146,7 @@ def main():
             if post.get("cover") and len(str(post["cover"])) > 10: err.append(f"post.cover「{post['cover']}」是封面第二行小字，≤ 10 字")
     elif brief: warn.append('没写 post（发布标题 + 3–5 个话题）：在 film.json 顶层加 "post": {"title": "…", "tags": ["…"]}')
     mu = film.get("music") or {}
-    if mu.get("style") and mu["style"] not in ("drive", "tension", "warm", "lofi"): err.append(f"music.style「{mu['style']}」不认识，只能是 drive / tension / warm / lofi")
+    if mu.get("style") and mu["style"] not in ("drive", "tension", "warm", "lofi", "doc"): err.append(f"music.style「{mu['style']}」不认识，只能是 drive / tension / warm / lofi / doc")
     if mu.get("song") and not Path(str(mu["song"])).expanduser().exists(): err.append(f"music.song 指向的歌不存在：{mu['song']}（重跑 scripts/fit_song.py，或删掉 music.song 改用合成配乐）")
     for ci, ch in enumerate(chs, 1):   # 画面写在章上（chapter.shot）= 这章第一句的 shot
         if ch.get("shot") and (ch.get("lines") or []):

@@ -39,7 +39,7 @@ bash scripts/setup.sh             # 缺东西就跑一次：建 .venv、装 play
 编 brief 里没有的数字或经历（「凑巧算得出」的数要写明按什么算）、一句一换画面、说了数的句子画面上却没有、
 把死路当成岔路的答案、横条乱填数、照着评审意见加"扣1 领资料"这类诱导话术。
 
-**改了技能本身**（画面件、检查、配乐、流程）先跑 `python3 scripts/selftest.py`：不联网不花钱，15 秒，18 项全过才算没改坏。
+**改了技能本身**（画面件、检查、配乐、流程）先跑 `python3 scripts/selftest.py`：不联网不花钱，15 秒，19 项全过才算没改坏。
 
 ## 0. 先问需求（没拿到答案不开工）
 
@@ -88,7 +88,7 @@ bash scripts/build.sh ~/Desktop/知识短片/<片名>                   # 检查
 
 `build.sh` 第一步跑 `check_film.py`，有错误（标点、太长、数字没出处或 brief 里找不到、联系方式和诱导话术、收入承诺、内部用语上屏、句数不对……）就停，改完再跑。
 拼图截的是每句播到一半的那一帧（`scripts/sheet_times.py`），不会截在换句的瞬间。
-配乐三种（`references/04-配乐与卡点.md`）：默认 `make_cues.mjs` 按片子结构自动作曲（律动 / 紧张 / 温暖 / 轻松，brief 的 `music.style`），没有版权问题；
+配乐三种（`references/04-配乐与卡点.md`）：默认 `make_cues.mjs` 按片子结构自动作曲（律动 / 紧张 / 温暖 / 轻松 / 纪录片，brief 的 `music.style`），没有版权问题；
 用户有能商用的歌：`python3 scripts/fit_song.py <工程> <歌或文件夹> --licensed` 量节拍、挑段落（给文件夹就逐首排名选歌）；
 想用平台热歌：每次出片都多出 `<片名>-配平台音乐用.mp4`（只有卡点音效）和 `发布说明.txt`，让用户在 App 里加歌——**热歌不合进文件**。
 成片在 `<工程>/renders/<片名>.mp4`，−14 LUFS，文件里写入不可见的 AI 生成标记。
@@ -123,7 +123,7 @@ SKILL.md                         本文件
 references/01-需求访谈.md         七问的问法、追问、反例、brief.json 格式
 references/02-引流叙事骨架.md     六拍骨架、四种角度、60/90 秒怎么拆、写坏的样子
 references/03-分镜与画面件.md     film.json 格式、15 个件、28 个图标、怎么选件、怎么写新件
-references/04-配乐与卡点.md       一句一小节、四种合成风格、用自己的歌（自动卡点 / 选歌）、平台曲库版、混音规格
+references/04-配乐与卡点.md       一句一小节、五种合成风格、用自己的歌（自动卡点 / 选歌）、平台曲库版、混音规格
 references/05-检查表.md           机器检查 + 人看三条 + 交付清单
 references/06-合规红线.md         平台和法律边界、可替换的说法
 template/                        画面模板：film.js（播放器）scenes.js（15 个件）icons.js（28 个图标）palette.js（章节色）

@@ -154,6 +154,21 @@ const INST = {
     }
     return out;
   },
+  // Piano-ish block chord (added for leadgen-knowledge-film): additive partials with slightly stretched upper harmonics,
+  // fast attack and a two-stage decay (bright strike, warm tail). notes: one note or a chord voicing.
+  piano({notes = null, note = 'A3', dur = 2.4, bright = 0.5}) {
+    const list = notes || [note], n = Math.round(dur * SR), out = new Float32Array(n);
+    const parts = [[1, 1], [2.003, 0.5 * bright + 0.2], [3.009, 0.22 * bright + 0.05], [4.02, 0.12 * bright], [5.04, 0.06 * bright]];
+    for (const nt of list) {
+      const f = hz(nt), lowK = Math.min(1, 220 / f);   // 低音区衰减慢一点
+      for (let i = 0; i < n; i++) {
+        const t = i / SR, e = (0.65 * Math.exp(-t * 3.2) + 0.35 * Math.exp(-t * (0.9 - 0.4 * lowK))) * Math.min(1, i / 60) * Math.min(1, (n - i) / 800);
+        let v = 0; for (const [m, g] of parts) v += Math.sin(2 * Math.PI * f * m * t) * g * Math.exp(-t * m * 0.6);
+        out[i] += v * e / list.length;
+      }
+    }
+    return out;
+  },
   // Low impact for big arrivals
   boom({freq = 38, dur = 1.6}) {
     const n = Math.round(dur * SR), out = new Float32Array(n);
@@ -173,7 +188,7 @@ const play = (c, t) => {
 };
 
 // ---------- guard rails: music is pitched; noise is a short accent, never a bed ----------
-const NOISE = new Set(['whoosh', 'scratch', 'clap', 'hat']), PITCHED = new Set(['pluck', 'bell', 'pad', 'chord', 'bass']);
+const NOISE = new Set(['whoosh', 'scratch', 'clap', 'hat']), PITCHED = new Set(['pluck', 'bell', 'pad', 'chord', 'bass', 'piano']);
 const all = [...(cues.events ?? []), ...(cues.bed ?? []), ...(cues.patterns ?? [])];
 if (!all.some((c) => PITCHED.has(c.type)) && !(cues.bed ?? []).some((b) => b.type === 'ambience')) {
   console.error('score.mjs: no pitched instrument (pluck, bell, pad) and no ambience bed. Add music, or an ambience bed for a scene that is carried by its environment (rain, wind, room).');
