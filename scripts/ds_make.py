@@ -128,7 +128,7 @@ REVIEW_SYS = """你是竖屏知识短片的严格评审。给你一张拼图：�
 最多报 12 条，挑最影响观感的报；只输出 JSON：{"issues":[{"line":句号(从1数),"kind":"content|engine","problem":"…","fix":"…"}],"verdict":"一句话总评"}。没问题就给空数组。"""
 
 
-MOOD_BPM = {"steady": 112, "tight": 128, "calm": 100}
+MOOD_BPM = {"steady": 112.8, "tight": 128, "calm": 100}   # 112.8：标杆样片那首 BGM（We Never · 若如初见）三个来源量出来都是 112.8，原来写 112 差 0.7%，90 秒片尾会错开 0.6 秒
 BEATS = [("① 开场钩子 + 处境", 0.18), ("② 断裂 + 片名", 0.12), ("③ 分叉", 0.2), ("④ 收窄 / 证据", 0.22), ("⑤ 出路", 0.16), ("⑥ 行动", 0.12)]
 # 每种角度的六拍说法不一样（references/02 的角度表）。11-18 实测：只给「被裁」那套说法时，转行盘点也写出了「被裁之后」
 ANGLE_BEATS = {
@@ -168,9 +168,21 @@ def pick_hook(brief):
     return cands[seed % len(cands)]
 
 
+def platform_song(brief):
+    """brief.music.platform_song 写的歌名 → scripts/platform_songs.json 里那一条（认别名）"""
+    name = str((brief.get("music") or {}).get("platform_song") or "").strip()
+    if not name: return None, None
+    songs = json.loads((SKILL / "scripts/platform_songs.json").read_text(encoding="utf-8"))
+    for k, v in songs.items():
+        if k.startswith("_"): continue
+        if name == k or name in v.get("aliases", []): return k, v
+    return name, None
+
+
 def plan_lines(brief):
     """先替模型把句数、镜数、开头结尾怎么写算好（弱模型数不清句数，填空比自己数稳）。"""
-    bpm = (brief.get("music") or {}).get("bpm") or MOOD_BPM.get(brief.get("mood"), 112); n = round(brief.get("seconds", 30) / (60 / bpm * 4))   # 用自己的歌：按歌的速度排句数（fit_song.py 写进 brief.music.bpm）
+    ps = platform_song(brief)[1]
+    bpm = (brief.get("music") or {}).get("bpm") or (ps or {}).get("bpm") or MOOD_BPM.get(brief.get("mood"), 112.8); n = round(brief.get("seconds", 30) / (60 / bpm * 4))   # 用自己的歌：按歌的速度排句数（fit_song.py 写进 brief.music.bpm）
     raw = [n * w for _, w in BEATS]; cnt = [max(1, int(x)) for x in raw]
     for i in sorted(range(len(raw)), key=lambda i: raw[i] - int(raw[i]), reverse=True):
         if sum(cnt) >= n: break
@@ -247,6 +259,8 @@ def main():
         print("== 写 film.json"); film = chat(key, base, model, [system, ask], led, "写")
         mu = json.loads(brief).get("music") or {}
         if mu.get("style"): film["music"] = {**(film.get("music") or {}), "style": mu["style"]}   # 配乐风格照 brief，不交给模型
+        pk, pv = platform_song(json.loads(brief))
+        if pv: film["music"] = {**(film.get("music") or {}), "platform_song": pk}; film["bpm"] = pv["bpm"]   # 速度对准这首歌，模型写错了也改回来
     convo = [system, ask, {"role": "assistant", "content": json.dumps(film, ensure_ascii=False)}]
 
     def save(f): (proj / "film.json").write_text(json.dumps(f, ensure_ascii=False, indent=1), encoding="utf-8")

@@ -16,7 +16,7 @@ brief.json 字段：
   example    true = 这些数字是编的示例（只能用来试做，片上一律标「示例」，不能发布）
   cta        下一步（主页合集 / 评论区 / 收藏）
   seconds    30 | 60 | 90
-  mood       steady（默认 112 BPM，和标杆样片同速）| tight（128，紧张）| calm（100，舒缓）
+  mood       steady（默认 112.8 BPM，和标杆样片那首 BGM 同速）| tight（128，紧张）| calm（100，舒缓）
   banned     不出现的说法（数组，可空）
 """
 import json
@@ -89,6 +89,11 @@ def check(b):
     if mu and not isinstance(mu, dict): errs.append('music 要写成 {"style": "drive"} 或 {"song": "歌的路径"}（用歌先跑 scripts/fit_song.py）')
     elif mu.get('style') and mu['style'] not in ('drive', 'tension', 'warm', 'lofi', 'doc'):
         errs.append(f'music.style「{mu["style"]}」不认识，只能是：drive（律动）tension（紧张）warm（温暖）lofi（轻松）doc（纪录片）')
+    elif mu.get('platform_song'):
+        songs = json.loads((Path(__file__).resolve().parent / 'platform_songs.json').read_text(encoding='utf-8'))
+        names = [k for k in songs if not k.startswith('_')]
+        if not any(mu['platform_song'] == k or mu['platform_song'] in songs[k].get('aliases', []) for k in names):
+            warns.append(f'music.platform_song「{mu["platform_song"]}」不在 scripts/platform_songs.json 里：照样能用，但速度按默认，发布说明里只给通用的对齐办法（已登记的：{"、".join(names)}）')
     elif mu.get('song') and not Path(str(mu['song'])).expanduser().exists():
         errs.append(f'music.song 指向的歌不存在：{mu["song"]}')
     if b.get('example'):
