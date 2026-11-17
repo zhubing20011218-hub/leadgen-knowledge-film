@@ -73,6 +73,10 @@ python3 $S/scripts/ds_make.py ~/Desktop/知识短片/film-demo            # 写 
 
 不编数字（编的一律标「示例」，示例片不发布）、不承诺收入、不贩卖焦虑（讲了焦虑就要给出口）、不放联系方式、发布时打开平台的"AI 生成内容"声明。
 
+## 版本
+
+现在是 **v0.2.0**，每一版改了什么见 [CHANGELOG.md](CHANGELOG.md)；GitHub 上每个版本有同名标签。
+
 ## 授权
 
 本仓库代码 MIT。渲染引擎来自 [HeyChengC/vibe-knowledge-film](https://github.com/HeyChengC/vibe-knowledge-film)（MIT），
