@@ -73,6 +73,9 @@ with tempfile.TemporaryDirectory() as d:
         r = run("node", SKILL / "scripts/score.mjs", Path(d) / "c.json", Path(d) / f"{st}.wav")
         good = r.returncode == 0 and (Path(d) / f"{st}.wav").stat().st_size > 100000 and json.loads(cues.stdout).get("style") == st
         report(f"合成配乐：{st}", good, (r.stderr or cues.stderr)[-200:])
+        if st == "drive":   # 配乐跟着画面走：示例片的岔路、算账、人生节点都该有对应的音
+            ev = json.loads(cues.stdout)["events"]; kinds = {e["type"] for e in ev}
+            report("配乐跟着画面动作（有条目音、划掉的闷击、断开的碎裂）", {"pluck", "knock", "scratch"} <= kinds and sum(e["type"] in ("pluck", "bell") for e in ev) >= 8, str(sorted(kinds)))
         if st == "drive":   # 听感底线：低音、中频大部分时间铺满（11-18 对标参考 BGM 后定的；原来一下一下的拨弦只有 22–41%）
             import array, math
             def fill(lo, hi):

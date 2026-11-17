@@ -49,7 +49,7 @@ const CH = chapters.map((c, i) => {
   const first = n;
   (c.lines || []).forEach((ln, j) => {
     const sh = ln.shot || (j === 0 ? c.shot : null);
-    if (sh || !SHOTS.length) SHOTS.push({d: sh || {}, first: n, span: 0});
+    if (sh || !SHOTS.length) SHOTS.push({d: sh || {}, first: n, span: 0, ch: i});
     SHOTS[SHOTS.length - 1].span++; n++;
   });
   return {i, first, last: n - 1, turn: !!c.turn, title: ((c.lines || [])[0]?.shot || c.shot)?.type === 'title'};
@@ -59,6 +59,8 @@ let turn = CH.findIndex((c) => c.turn); if (turn < 0) turn = Math.max(1, CH.leng
 
 const r3 = (x) => Math.round(x * 1000) / 1000;
 const up = (note, k) => note.replace(/-?\d$/, (d) => String(Number(d) + k));
+const SEMI = {C: -9, D: -7, E: -5, F: -4, G: -2, A: 0, B: 2};
+const hzOf = (n) => { const m = /^([A-G])(#|b)?(-?\d)$/.exec(n); return 440 * 2 ** ((SEMI[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) + (Number(m[3]) - 4) * 12) / 12); };
 const bed = [], patterns = [], events = [];
 
 CH.forEach((c, i) => {
@@ -112,7 +114,72 @@ for (const s of SHOTS) {
   events.push({type: 'knock', t: r3(t), freq: 180, gain: 0.55});
   events.push({type: 'boom', t: r3(t), gain: 0.3, freq: 55, dur: 0.6});
 }
-if (!SFX_ONLY) for (let i = 0; i < N; i++) events.push({type: 'tick', t: r3(at(i)), freq: 2600, gain: 0.06});
+// ---------- 画面动作 → 音乐（11-18 calmness："配乐要跟着画面的代码走"；上游引擎 audio.py 也是按画面事件表配乐）----------
+// 时刻和 template/scenes.js 用同一套算法：第 i 个东西（共 n 个）在一镜里什么时候出来。音高取这一章和弦里的音，所以是旋律不是音效。
+// 用自己的歌 / 平台曲库的歌时（--sfx-only）只留不带音高的（闷击、碎裂、低音），免得和歌的调打架。
+const lineText = []; chapters.forEach((c) => (c.lines || []).forEach((ln) => lineText.push(String(ln.text || ''))));
+const itemAt = (span, i, n) => (n <= span || i < span - 1) ? i * BAR : (span - 1) * BAR + (i - (span - 1)) * Math.min(BEAT, (BAR * 0.55) / Math.max(n - (span - 1) - 1, 1));
+const bright = ['warm', 'doc', 'lofi'].includes(styleName) ? 'bell' : 'pluck';
+for (const sh of SHOTS) {
+  const d = sh.d, ty = d.type, t0 = at(sh.first), span = sh.span, ch = CHORDS[sh.ch % CHORDS.length];
+  const ladder = [...new Set(ch.arp)].sort((a, b) => hzOf(a) - hzOf(b)); const step = (k) => up(ladder[k % ladder.length], 1 + Math.floor(k / ladder.length));
+  const note = (t, nt, g = 0.09, inst = bright) => { if (!SFX_ONLY) events.push({type: inst, t: r3(t), note: nt, gain: inst === 'bell' ? g : g * 0.9, ...(inst === 'bell' ? {dur: 1.4} : {decay: 0.994, bright: 0.6})}); };
+  const thud = (t, g = 0.3) => events.push({type: 'knock', t: r3(t), freq: 210, gain: g});
+  const stab = (t, notes, g = 0.08) => notes.forEach((x) => note(t, x, g, 'bell'));
+  const list = d.rows || d.nodes || d.items || [];
+  if (ty === 'number') {
+    const v = (d.values || []).map(Number);
+    v.forEach((x, i) => {
+      const t = t0 + itemAt(span, i, v.length) + 0.05;
+      if (i === 0) { note(t, step(2)); return; }
+      const upward = x > v[i - 1], run = upward ? [0, 1, 2, 4] : [4, 2, 1, 0];   // 往上涨：上行；往下掉：下行
+      run.forEach((k, j) => note(t + j * BEAT / 4, step(k + (upward ? 1 : 0)), 0.07));
+      if (!upward) thud(t + 0.6 * BEAT, 0.2);
+    });
+  } else if (ty === 'fork' && d.focus == null) {
+    const paths = d.paths || [], none = d.pick === -1 || d.pick === 'none', pick = none ? -1 : d.pick != null ? Number(d.pick) : paths.length - 1;
+    paths.forEach((_, i) => note(t0 + 0.05 + i * 0.12, step(i), 0.05));
+    const kills = paths.map((_, i) => i).filter((i) => i !== pick), steps = Math.max(span - (none ? 1 : 2), 1);
+    kills.forEach((i, j) => {   // 和 scenes.js 的 killAt 一样：一句划掉一条
+      const kt = span <= 1 ? 0.5 + j * BEAT : (1 + Math.min(j, steps - 1)) * BAR + Math.max(0, j - (steps - 1)) * BEAT;
+      thud(t0 + kt + 0.17, 0.26); note(t0 + kt + 0.17, up(ladder[0], 0), 0.06, 'pluck');   // 划线动画 0.3 秒，变化最大在中段
+    });
+    if (!none) stab(t0 + (span <= 1 ? 0.5 + kills.length * BEAT : Math.max(span - 1, 1) * BAR) + 0.05, [step(0), step(2), step(4)], 0.07);   // 留下的那条：亮和弦
+    else events.push({type: 'boom', t: r3(t0 + (span - 1) * BAR + 0.1), gain: 0.3, freq: 45, dur: 0.8});
+  } else if (ty === 'fork') {
+    note(t0 + 0.1, step(Number(d.focus) * 2), 0.09, 'bell');
+  } else if (ty === 'checklist') {
+    list.forEach((r, i) => { const t = t0 + itemAt(span, i, list.length) + 0.15; if (r && r.ok === false) { thud(t, 0.22); note(t, up(ladder[0], 0), 0.05, 'pluck'); } else note(t, step(2 + i), 0.09, 'bell'); });
+  } else if (ty === 'ledger') {
+    const rows = d.rows || [], n = rows.length + (d.total ? 1 : 0); let k = 3;
+    rows.forEach((r, i) => { const neg = r && (r.op === '-' || r.op === '−'); k = i === 0 ? 3 : k + (neg ? -1 : 1); note(t0 + itemAt(span, i, n) + 0.15, step(Math.max(0, k)), 0.08); if (neg) thud(t0 + itemAt(span, i, n) + 0.15, 0.15); });   // 每行淡入 0.4 秒
+    if (d.total) {
+      const tot = rows.reduce((a, r) => a + ((r && (r.op === '-' || r.op === '−')) ? -1 : 1) * (Number(r && r.value) || 0), 0), t = t0 + itemAt(span, n - 1, n) + 0.1;
+      if (tot >= 0) stab(t, [step(0), step(2), step(4)], 0.08); else { stab(t, [up(ladder[0], 0), up(ladder[1], 0)], 0.07); events.push({type: 'boom', t: r3(t), gain: 0.3, freq: 45, dur: 0.8}); }
+    }
+  } else if (['bars', 'steps', 'cycle', 'cards', 'timeline', 'ring'].includes(ty)) {
+    const n = ty === 'ring' ? list.length + 1 : list.length;
+    for (let i = 0; i < n; i++) {   // 一条一条出来：音阶一级一级往上爬
+      const t = ty === 'timeline' && span <= 1 ? t0 + i * Math.min(BEAT, BAR * 0.9 / Math.max(n, 1)) : t0 + itemAt(span, i, n) + 0.05;
+      note(t + 0.06, step(i), i === n - 1 ? 0.1 : 0.08);   // 条目淡入 0.3 秒，比起点晚一点最贴画面（11-18 逐帧量过）
+    }
+    if (ty === 'timeline' && d.breakAt != null) { const t = t0 + Number(d.breakStep ?? 1) * BAR; events.push({type: 'scratch', t: r3(t), dur: 0.35, gain: 0.25}); events.push({type: 'boom', t: r3(t), gain: 0.35, freq: 42, dur: 0.9}); }
+  } else if (ty === 'compare') {
+    const tr = span > 1 ? BAR : BEAT * 2;
+    note(t0 + 0.05, step(0)); note(t0 + tr + 0.3, step(4), 0.1);
+    if (d.badge) stab(t0 + (span >= 3 ? 2 * BAR : tr + 0.6), [step(2), step(4), step(6)], 0.06);
+  } else if (ty === 'object') {
+    const c = Math.min(8, Number(d.count) || 1);
+    for (let i = 0; i < c; i++) note(t0 + 0.1 + i * Math.min(0.12, BAR * 0.6 / c), step(i), 0.06, 'pluck');
+  } else if (ty === 'flow') {
+    note(t0 + 0.05, step(0)); events.push({type: 'whoosh', t: r3(t0 + (span > 1 ? BAR : BEAT * 2)), dur: 0.7, gain: 0.14}); note(t0 + (span > 1 ? BAR : BEAT * 2) + 0.7, step(4), 0.1);
+  } else if (ty === 'statement' || ty === 'title') {
+    stab(t0 + 0.02, [step(0), step(2), step(4)], 0.06);
+  }
+}
+// 提问的句子（为什么 / 怎么 / 什么 / 吗 / 呢）：句首一个上滑音，像在问
+lineText.forEach((x, i) => { if (/为什么|怎么|什么|哪|吗$|呢$/.test(x)) events.push({type: 'drop', t: r3(at(i)), freq: 520, dur: 0.35, gain: 0.12}); });
+if (!SFX_ONLY) for (let i = 0; i < N; i++) events.push({type: 'tick', t: r3(at(i)), freq: 2600, gain: 0.04});
 events.push({type: 'bell', t: r3(at(N - 1)), note: 'A5', gain: 0.16});
 events.push({type: 'boom', t: r3(at(N - 1)), gain: 0.45});
 
