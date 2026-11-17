@@ -44,7 +44,7 @@ git clone https://github.com/zhubing20011218-hub/leadgen-knowledge-film ~/.claud
 bash ~/.dsh/skills/leadgen-knowledge-film/scripts/setup.sh      # 建 .venv、装 playwright + pillow、下载开源字体（约 40MB）
 ```
 
-还需要 node 和 ffmpeg。装好后可以跑 `python3 scripts/selftest.py` 自测（不联网、不花钱，约 15 秒）。然后在助手里说"做一条引流的知识短片"，它会先问你需求；
+还需要 node 和 ffmpeg。装好后可以跑 `python3 scripts/selftest.py` 自测（不联网、不花钱，约 2 分钟；加 --quick 约 10 秒）。然后在助手里说"做一条引流的知识短片"，它会先问你需求；
 助手能看图（DeepSeek Harness 的 `read_image`、Claude 的 `Read`）就自己看拼图改，不额外花钱。
 
 ## 不开助手，直接用 DeepSeek 接口全自动

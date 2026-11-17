@@ -106,5 +106,38 @@ if "--quick" not in sys.argv:
         except json.JSONDecodeError: qa = None
         report("frame_qa 0 处", qa == [], (r.stdout or r.stderr)[-300:])
 
+print("== 7 卡点：画面变化和音效都落在鼓点上（教程第 02 / 03 条，calmness 11-18 确认）")
+f = copy.deepcopy(film); bpm = f.get("bpm", 112.8); beat = 60 / bpm
+with tempfile.TemporaryDirectory() as d:
+    (Path(d) / "f.json").write_text(json.dumps(f, ensure_ascii=False), encoding="utf-8")
+    ev = json.loads(run("node", SKILL / "scripts/make_cues.mjs", Path(d) / "f.json").stdout)["events"]
+    act = [e for e in ev if e["type"] in ("pluck", "bell", "knock", "tick", "scratch")]
+    g = beat / 4   # 节奏格子按十六分音符算：大数字涨跌的上行 / 下行音是十六分音符的一串，本来就在格子上
+    off = [e["t"] for e in act if abs(e["t"] / g - round(e["t"] / g)) * g > 0.002]
+    report(f"音效踩在拍上（{len(act) - len(off)}/{len(act)}）", len(off) <= 1, str(off[:5]))
+if "--quick" not in sys.argv:
+    with tempfile.TemporaryDirectory() as d:
+        run("bash", SKILL / "scripts/new_film.sh", d)
+        for x in ("film.json", "brief.json"): (Path(d) / x).write_text((EX / x).read_text(encoding="utf-8"), encoding="utf-8")
+        code = (
+            "import sys, io, json\n"
+            f"sys.path.insert(0, {str(SKILL / 'engine')!r}); import render\n"
+            "from PIL import Image\n"
+            f"beat = {beat}; T = beat * 4 * 6\n"   # 前 6 小节
+            "def go(pg):\n"
+            "    return [Image.open(io.BytesIO(render.shot(pg, k / 30))).convert('L').resize((136, 242)).tobytes() for k in range(int(T * 30))]\n"
+            f"fr = render.with_page(__import__('pathlib').Path({d!r}), go)\n"
+            "W = 136\n"
+            "def dd(i): a, b = fr[i-1], fr[i]; return sum(1 for y in range(30, 180, 2) for x in range(0, W, 2) if abs(a[y*W+x] - b[y*W+x]) > 25)\n"
+            "m = [0] + [dd(i) for i in range(1, len(fr))]; st = []\n"
+            "for i in range(1, len(fr)):\n"
+            "    if m[i] >= 8 and m[i-1] < 4 and (not st or i - st[-1] > 4): st.append(i)\n"
+            "on = [i for i in st if abs((i/30/beat - round(i/30/beat)) * beat) <= 0.05]\n"
+            "print(len(on), len(st))\n")
+        r = run(PY, "-W", "ignore", "-c", code)
+        try: a, b = map(int, r.stdout.split()[-2:])
+        except ValueError: a, b = 0, 0
+        report(f"画面变化落在拍上（前 6 小节 {a}/{b}，要 ≥ 75%，且至少 9 次；标杆样片整片 58%，其余是光点、滚数这类连续动作）", b >= 9 and a >= 0.75 * b, (r.stderr or r.stdout)[-300:])
+
 print(f"\n{'全部通过' if not fail else f'{fail} 项没过'}（{ok} 过 / {fail} 没过）")
 sys.exit(1 if fail else 0)
