@@ -5,7 +5,7 @@
 | 文件 | 来源 | 协议 | 说明 |
 |---|---|---|---|
 | `engine/vk.js` `engine/vk-kit.js` `engine/render.py` `engine/audio.py` `engine/get_fonts.py` `engine/index.html` | [HeyChengC/vibe-knowledge-film](https://github.com/HeyChengC/vibe-knowledge-film) 的渲染引擎 | MIT（全文 `engine/LICENSE-vibe-knowledge-film`） | 改成竖屏 1080×1920，加了暖黑背景 |
-| `scripts/score.mjs` | [8533502-dev/deepseek-opus-motion-skill](https://github.com/8533502-dev/deepseek-opus-motion-skill) 的 `templates/remotion-starter/scripts/score.mjs`，Copyright (c) 2026 阿宁Neo | MIT（全文 `scripts/LICENSE-score.mjs.txt`） | 改了一处：可以多传一个参数，把结果写到指定文件（叠在用户歌上的卡点音效要单独存）；合成算法未改动 |
+| `scripts/score.mjs` | [8533502-dev/deepseek-opus-motion-skill](https://github.com/8533502-dev/deepseek-opus-motion-skill) 的 `templates/remotion-starter/scripts/score.mjs`，Copyright (c) 2026 阿宁Neo | MIT（全文 `scripts/LICENSE-score.mjs.txt`） | 有改动：可以多传一个参数把结果写到指定文件；新增 `chord`（厚和弦）和 `bass`（持续贝斯）两件乐器，都可以带抽吸；原有乐器和合成算法未改 |
 | `engine/fonts/*`（不在仓库里，`engine/get_fonts.py` 下载） | [google/fonts](https://github.com/google/fonts) | SIL OFL 1.1（各字体的 OFL 文本随字体下载） | 思源黑体、思源宋体等 |
 
 仓库里没有任何第三方音乐；配乐全部由 `scripts/score.mjs` 现场合成。

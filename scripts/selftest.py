@@ -73,6 +73,16 @@ with tempfile.TemporaryDirectory() as d:
         r = run("node", SKILL / "scripts/score.mjs", Path(d) / "c.json", Path(d) / f"{st}.wav")
         good = r.returncode == 0 and (Path(d) / f"{st}.wav").stat().st_size > 100000 and json.loads(cues.stdout).get("style") == st
         report(f"合成配乐：{st}", good, (r.stderr or cues.stderr)[-200:])
+        if st == "drive":   # 听感底线：低音、中频大部分时间铺满（11-18 对标参考 BGM 后定的；原来一下一下的拨弦只有 22–41%）
+            import array, math
+            def fill(lo, hi):
+                raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", "8", "-t", "16", "-i", str(Path(d) / "drive.wav"), "-af", f"highpass=f={lo},lowpass=f={hi}", "-ac", "1", "-ar", "16000", "-f", "s16le", "-"], capture_output=True).stdout
+                x = array.array("h"); x.frombytes(raw[:len(raw) // 2 * 2]); env = []
+                for i in range(0, len(x) - 800, 800):
+                    env.append(10 * math.log10(sum(v * v for v in x[i:i + 800:2]) / 400 + 1))
+                p95 = sorted(env)[int(len(env) * 0.95)]; return sum(1 for v in env if v > p95 - 10) / len(env)
+            fb, fm = fill(40, 150), fill(400, 1000)
+            report(f"律动配乐铺得满（低音 {fb:.0%}、中频 {fm:.0%}，要 ≥ 75% / 85%）", fb >= 0.75 and fm >= 0.85)
     if "--quick" not in sys.argv:
         print("== 5 节拍检测量得准（合成一首 120 BPM、前面垫 1.37 秒静音的歌）")
         f = copy.deepcopy(film); f["bpm"] = 120; (Path(d) / "f.json").write_text(json.dumps(f, ensure_ascii=False), encoding="utf-8")

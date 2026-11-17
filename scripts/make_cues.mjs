@@ -18,19 +18,19 @@ const chapters = film.chapters || [];
 // ---------- 风格：和弦（根音 + 琶音）、旋律用哪件乐器、鼓型、合成器调色 ----------
 const STYLES = {
   drive: {   // 律动（默认，和标杆样片一个路子）：小调四和弦，八分音符拨弦，四拍底鼓 + 二四拍拍手
-    palette: 'poster', lead: 'bell', kick: 1, clap: true, knock: false, swing: 0, hat16: false, bassEvery: 1,
+    palette: 'poster', lead: 'bell', kick: 1, clap: true, knock: false, swing: 0, hat16: false, bassEvery: 1, bed: {pump: 0.4, cutoff: 2400, gain: 0.17, bass: 1},
     chords: [['A2', 'A4 C5 E5 C5 A4 E5 C5 E5'], ['F2', 'F4 A4 C5 A4 F4 C5 A4 C5'], ['C3', 'C5 E5 G5 E5 C5 G5 E5 G5'], ['G2', 'G4 B4 D5 B4 G4 D5 B4 D5']],
   },
   tension: {   // 紧张：和声小调（E 大三和弦往回拉），十六分音符镲，八分音符低音一直往前推
-    palette: 'swiss', lead: 'pluck', kick: 1, clap: true, knock: false, swing: 0, hat16: true, bassEvery: 0.5,
+    palette: 'swiss', lead: 'pluck', kick: 1, clap: true, knock: false, swing: 0, hat16: true, bassEvery: 0.5, bed: {pump: 0.45, cutoff: 1800, gain: 0.16, bass: 1},
     chords: [['A2', 'A4 C5 E5 A5 E5 C5 A4 C5'], ['A2', 'A4 C5 F5 A5 F5 C5 A4 C5'], ['F2', 'F4 A4 C5 F5 C5 A4 F4 A4'], ['E2', 'E4 G#4 B4 E5 B4 G#4 E4 G#4']],
   },
   warm: {   // 温暖 / 治愈：大调四和弦，铃声琶音，底鼓只在一三拍，二四拍木鱼，不用拍手
-    palette: 'data', lead: 'bell', kick: 2, clap: false, knock: true, swing: 0, hat16: false, bassEvery: 2,
+    palette: 'data', lead: 'bell', kick: 2, clap: false, knock: true, swing: 0, hat16: false, bassEvery: 2, bed: {pump: 0.22, cutoff: 1400, gain: 0.14, bass: 2},
     chords: [['C3', 'C5 E5 G5 E5 C5 G5 E5 G5'], ['G2', 'B4 D5 G5 D5 B4 G5 D5 G5'], ['A2', 'A4 C5 E5 C5 A4 E5 C5 E5'], ['F2', 'A4 C5 F5 C5 A4 F5 C5 F5']],
   },
   lofi: {   // 轻松 / 聊天感：七和弦（Dm7 G7 Cmaj7 Am7），摇摆的八分音符，木鱼当军鼓
-    palette: 'riso', lead: 'pluck', kick: 2, clap: false, knock: true, swing: 0.16, hat16: false, bassEvery: 2,
+    palette: 'riso', lead: 'pluck', kick: 2, clap: false, knock: true, swing: 0.16, hat16: false, bassEvery: 2, bed: {pump: 0.15, cutoff: 1000, gain: 0.12, bass: 2},
     chords: [['D2', 'D4 F4 A4 C5 A4 F4 D4 F4'], ['G2', 'B3 D4 F4 A4 F4 D4 B3 D4'], ['C3', 'C4 E4 G4 B4 G4 E4 C4 E4'], ['A2', 'A3 C4 E4 G4 E4 C4 A3 C4']],
   },
 };
@@ -61,21 +61,26 @@ CH.forEach((c, i) => {
   const a = at(c.first), b = i === CH.length - 1 ? END : at(c.last + 1), ch = CHORDS[i % CHORDS.length];
   const gapStart = i === turn - 1 ? b - BAR : b;          // 反转前一小节：撤鼓
   if (!SFX_ONLY) {
-    bed.push({type: 'pad', note: ch.root, start: r3(a), end: r3(b + 0.25), gain: styleName === 'warm' ? 0.15 : 0.13, fade: 0.25});
+    bed.push({type: 'pad', note: ch.root, start: r3(a), end: r3(b + 0.25), gain: 0.07, fade: 0.25});
+    // 厚和弦铺底 + 持续贝斯（11-18 对照参考 BGM：它的低音 / 中频 86–97% 的时间都铺满，我们原来只有 22–41%，听着一下一下的像玩具）
+    const notes = [up(ch.root, 1), ...[...new Set(ch.arp)].slice(0, 3).map((x) => up(x, -1))], B = S.bed, lift = i >= turn;   // 根音低八度垫底，低中频才厚
+    bed.push({type: 'chord', notes, start: r3(a), end: r3(b + 0.12), gain: B.gain * (i === 0 ? 0.75 : 1), cutoff: B.cutoff * (lift ? 1.4 : 1), pump: {bpm: BPM, depth: B.pump}, fade: 0.06});
+    if (lift) bed.push({type: 'chord', notes: notes.map((x) => up(x, 1)), start: r3(a), end: r3(gapStart + 0.12), gain: B.gain * 0.45, cutoff: B.cutoff * 1.8, pump: {bpm: BPM, depth: B.pump}, fade: 0.06, voices: 3});   // 反转后高八度再叠一层：像副歌一样变亮
+    patterns.push({type: 'bass', every: B.bass, start: r3(a), end: r3(gapStart), notes: [up(ch.root, -1)], dur: r3(BEAT * B.bass * 0.97), gain: 0.26, pump: {bpm: BPM, depth: B.pump * 0.7}});
     const arpInst = styleName === 'warm' ? 'bell' : 'pluck', sw = S.swing * BEAT;
     // 琶音：八分音符（正拍、反拍各一路）；lofi 的反拍往后拖一点（摇摆）
     [0, 1].forEach((odd) => patterns.push({type: arpInst, every: 1, start: r3(a + odd * (BEAT / 2 + sw)), end: r3(gapStart), notes: ch.arp.filter((_, k) => k % 2 === odd),
-      gain: (i === 0 ? 0.09 : 0.075) * (arpInst === 'bell' ? 0.55 : 1), ...(arpInst === 'bell' ? {dur: 1.2} : {decay: styleName === 'lofi' ? 0.985 : 0.993}), ...(styleName === 'lofi' ? {bright: 0.2} : {})}));
+      gain: (i === 0 ? 0.07 : 0.055) * (arpInst === 'bell' ? 0.55 : 1), ...(arpInst === 'bell' ? {dur: 1.2} : {decay: styleName === 'lofi' ? 0.985 : 0.993}), ...(styleName === 'lofi' ? {bright: 0.2} : {})}));
     patterns.push({type: 'hat', every: 1, start: r3(a + BEAT / 2 + sw), end: r3(gapStart), gain: 0.07});
     if (i === 0) {   // 开场章不上整套鼓，但每小节第一拍一下轻底鼓：前 3 秒决定划不划走，换画面要有一下"咚"
       patterns.push({type: 'kick', every: 4, start: r3(a), end: r3(gapStart), gain: 0.32});
     }
     if (i >= 1) {
-      patterns.push({type: 'kick', every: S.kick, start: r3(a), end: r3(gapStart), gain: S.kick === 1 ? 0.5 : 0.42});
+      patterns.push({type: 'kick', every: S.kick, start: r3(a), end: r3(gapStart), gain: S.kick === 1 ? 0.42 : 0.38});
       if (S.clap) patterns.push({type: 'clap', every: 2, start: r3(a + BEAT), end: r3(gapStart), gain: 0.16, tone: 0.6});
       if (S.knock) patterns.push({type: 'knock', every: 2, start: r3(a + BEAT), end: r3(gapStart), gain: 0.14, freq: styleName === 'lofi' ? 480 : 700});
-      patterns.push({type: 'pluck', every: S.bassEvery, start: r3(a), end: r3(gapStart), notes: [up(ch.root, 1)], gain: S.bassEvery < 1 ? 0.1 : 0.12, decay: 0.985, bright: 0.25});
-      patterns.push({type: 'hat', every: S.hat16 ? 0.25 : 0.5, start: r3(a), end: r3(gapStart), gain: S.hat16 ? 0.028 : 0.035});
+      patterns.push({type: 'pluck', every: S.bassEvery, start: r3(a), end: r3(gapStart), notes: [up(ch.root, 1)], gain: S.bassEvery < 1 ? 0.06 : 0.07, decay: 0.985, bright: 0.25});
+      patterns.push({type: 'hat', every: S.hat16 || i >= turn ? 0.25 : 0.5, start: r3(a), end: r3(gapStart), gain: S.hat16 || i >= turn ? 0.028 : 0.035});
     }
     if (i >= turn) {   // 旋律：从反转起，每小节 4 个四分音符，取这章和弦的音——后半段像一首歌在往上推
       const tones = [ch.arp[0], ch.arp[2], ch.arp[1], ch.arp[3] || ch.arp[2]];

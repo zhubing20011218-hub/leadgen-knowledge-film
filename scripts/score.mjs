@@ -126,6 +126,34 @@ const INST = {
     }
     return out;
   },
+  // Supersaw chord bed (added for leadgen-knowledge-film): several detuned saws per note through a one-pole lowpass,
+  // the wide, sustained synth chord of electronic knowledge-video BGM. notes: ['A3','C4','E4'];
+  // pump: {bpm, depth} ducks it after every beat (sidechain feel) — t=0 of the buffer must be a beat.
+  chord({notes = ['A3', 'C4', 'E4'], dur = 4, voices = 5, detune = 0.012, cutoff = 2200, fade = 0.12, pump = null}) {
+    const n = Math.round(dur * SR), out = new Float32Array(n), k = 1 - Math.exp(-2 * Math.PI * cutoff / SR);
+    const oscs = []; for (const note of notes) { const f = hz(note); for (let v = 0; v < voices; v++) oscs.push({f: f * (1 + (v - (voices - 1) / 2) * detune / ((voices - 1) / 2 || 1)), ph: (v * 0.37) % 1}); }
+    const beat = pump ? 60 / pump.bpm : 0; let lp = 0, lp2 = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / SR; let v = 0;
+      for (const o of oscs) { o.ph += o.f / SR; o.ph -= Math.floor(o.ph); v += 2 * o.ph - 1; }
+      lp += k * (v / oscs.length - lp); lp2 += k * (lp - lp2);
+      const e = Math.min(1, t / fade, (dur - t) / fade), g = pump ? 1 - pump.depth * Math.exp(-(t % beat) / (beat * 0.22)) : 1;
+      out[i] = lp2 * 2.2 * e * g;
+    }
+    return out;
+  },
+  // Sustained synth bass: saw + sub sine through a lowpass, optional pump. One note for `dur` seconds.
+  bass({note = 'A1', dur = 0.5, cutoff = 420, pump = null}) {
+    const f = hz(note), n = Math.round(dur * SR), out = new Float32Array(n), k = 1 - Math.exp(-2 * Math.PI * cutoff / SR);
+    const beat = pump ? 60 / pump.bpm : 0; let ph = 0, lp = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / SR; ph += f / SR; ph -= Math.floor(ph);
+      lp += k * ((2 * ph - 1) * 0.6 + Math.sin(2 * Math.PI * ph) * 0.8 - lp);
+      const e = Math.min(1, i / 120, (n - i) / 240), g = pump ? 1 - pump.depth * Math.exp(-(t % beat) / (beat * 0.22)) : 1;
+      out[i] = lp * e * g;
+    }
+    return out;
+  },
   // Low impact for big arrivals
   boom({freq = 38, dur = 1.6}) {
     const n = Math.round(dur * SR), out = new Float32Array(n);
@@ -145,7 +173,7 @@ const play = (c, t) => {
 };
 
 // ---------- guard rails: music is pitched; noise is a short accent, never a bed ----------
-const NOISE = new Set(['whoosh', 'scratch', 'clap', 'hat']), PITCHED = new Set(['pluck', 'bell', 'pad']);
+const NOISE = new Set(['whoosh', 'scratch', 'clap', 'hat']), PITCHED = new Set(['pluck', 'bell', 'pad', 'chord', 'bass']);
 const all = [...(cues.events ?? []), ...(cues.bed ?? []), ...(cues.patterns ?? [])];
 if (!all.some((c) => PITCHED.has(c.type)) && !(cues.bed ?? []).some((b) => b.type === 'ambience')) {
   console.error('score.mjs: no pitched instrument (pluck, bell, pad) and no ambience bed. Add music, or an ambience bed for a scene that is carried by its environment (rain, wind, room).');

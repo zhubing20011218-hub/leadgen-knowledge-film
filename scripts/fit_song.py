@@ -37,6 +37,20 @@ def envelope(x):
     return e, [max(0.0, v - m) for v in on]
 
 
+BANDS = [(30, 120), (120, 300), (300, 800), (800, 2500), (2500, 6000), (6000, 11000)]
+
+
+def flux(envs):
+    """分频段起音：每个频段 log 能量的上升加起来，再减掉前后 0.5 秒的平均（只留比周围突出的）。
+    11-18：商业成品歌压得很满，总音量几乎不跳，只看总音量时鼓点被埋掉——参考 BGM 和没有鼓的环境音得分一样；
+    分频段后参考 BGM 2.16、朋友样片 2.33、环境音 1.15，分得开"""
+    n = min(len(e) for e in envs)
+    out = [0.0] + [sum(max(0.0, e[i] - e[i - 1]) for e in envs) for i in range(1, n)]
+    W = 50; pre = [0.0]
+    for v in out: pre.append(pre[-1] + v)
+    return [max(0.0, out[i] - (pre[min(n, i + W)] - pre[max(0, i - W)]) / (min(n, i + W) - max(0, i - W))) for i in range(n)]
+
+
 def tempo(on):
     """自相关挑速度，偏向 90–140；再细调到对齐起音最多的那个速度和第一拍的位置"""
     seg = on[: int(FPS * 90)]
@@ -62,8 +76,9 @@ def tempo(on):
 
 
 def analyze(path):
-    x = decode(path); e, on = envelope(x)
-    low = envelope(decode(path, (30, 160)))[0]; mid = envelope(decode(path, (250, 2500)))[0]   # 底鼓、和弦 / 旋律
+    x = decode(path); e = envelope(x)[0]
+    envs = [envelope(decode(path, b))[0] for b in BANDS]; on = flux(envs)
+    low = envs[0]; mid = [(a + b) / 2 for a, b in zip(envs[2], envs[3])]   # 底鼓、和弦 / 旋律
     dur = len(x) / SR
     bpm, off, steady = tempo(on)
     P = FPS * 60 / bpm
@@ -143,15 +158,15 @@ def main():
         except subprocess.CalledProcessError: print(f"  跳过 {p.name}：ffmpeg 读不了"); continue
         seg = pick_segment(an, n_lines, turn)
         fit = 1 - min(1, abs(math.log2(an["bpm"] / 112)) / 0.5)              # 离 112 越近越像样片的节奏
-        score = (0.45 * min(1, max(0, an["steady"] - 1) / 0.5) + 0.35 * fit + 0.2 * max(0, (seg or {}).get("turn_jump", 0))) if seg else -1
+        score = (0.45 * min(1, max(0, an["steady"] - 1.2) / 1.0) + 0.35 * fit + 0.2 * max(0, (seg or {}).get("turn_jump", 0))) if seg else -1
         rows.append((score, an, seg))
-        print(f"  {p.name}：{an['bpm']} BPM · 节拍{'稳' if an['steady'] >= 1.15 else '一般' if an['steady'] >= 1.05 else '不稳'}（{an['steady']}）· "
-              f"{an['dur']} 秒" + (f" · 建议从 {seg['start']:.2f} 秒（第 {seg['bar'] + 1} 小节）起用，这段{'对得齐' if seg['align'] >= 1.15 else '大体对得上' if seg['align'] >= 1.05 else '有几小节对不齐'}，反转处{'变强' if seg['turn_jump'] > 0.05 else '没明显变化'}" if seg else f" · 太短，放不下 {n_lines} 小节"))
+        print(f"  {p.name}：{an['bpm']} BPM · 节拍{'稳' if an['steady'] >= 1.6 else '一般' if an['steady'] >= 1.3 else '不稳'}（{an['steady']}）· "
+              f"{an['dur']} 秒" + (f" · 建议从 {seg['start']:.2f} 秒（第 {seg['bar'] + 1} 小节）起用，这段{'对得齐' if seg['align'] >= 1.6 else '大体对得上' if seg['align'] >= 1.3 else '有几小节对不齐'}，反转处{'变强' if seg['turn_jump'] > 0.05 else '没明显变化'}" if seg else f" · 太短，放不下 {n_lines} 小节"))
     rows.sort(key=lambda r: -r[0])
     if len(rows) > 1: print("== 推荐顺序：" + "  ".join(f"{i + 1}. {Path(r[1]['path']).name}" for i, r in enumerate(rows) if r[0] >= 0))
     if not proj or "--top" in sys.argv or not rows or rows[0][0] < 0: return
     score, an, seg = rows[0]
-    if an["steady"] < 1.05 or seg["align"] < 1.05: print(f"⚠  {Path(an['path']).name} 节拍不稳或这一段对不齐（可能是现场录音、自由节奏、中途变速或没有鼓），卡点会对不齐，建议换一首有稳定鼓点的")
+    if an["steady"] < 1.3 or seg["align"] < 1.3: print(f"⚠  {Path(an['path']).name} 节拍不稳或这一段对不齐（可能是现场录音、自由节奏、中途变速或没有鼓），卡点会对不齐，建议换一首有稳定鼓点的")
     f, _, _ = film_info(proj)
     old = f.get("bpm", 112); f["bpm"] = an["bpm"]; f["phase"] = 0
     f["music"] = {**(f.get("music") or {}), "song": an["path"], "start": seg["start"], "bpm": an["bpm"], "steady": an["steady"]}
