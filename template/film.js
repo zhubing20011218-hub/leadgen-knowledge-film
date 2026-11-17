@@ -190,7 +190,7 @@ function start(F) {
       const L = lineAt(t), S = L.shot, { col, alt } = colorsAt(t);
 
       /* 当前镜：小节线上进场；下一镜不同就在最后 0.16 秒退场 */
-      const inK = ss(t, S.t0, S.t0 + 0.28), outK = S.next ? 1 - ss(t, S.t1 - 0.16, S.t1) : 1;
+      const inK = ss(t, S.t0, S.t0 + 0.15), outK = S.next ? 1 - ss(t, S.t1 - 0.06, S.t1) : 1;   // 换镜贴着小节线：旧的最后 0.06 秒才淡出，新的 0.15 秒内到位（原来提前 0.16 秒就开始变，落在拍子外）
       const step = Math.min(S.span - 1, Math.max(0, Math.floor((t - S.t0) / BAR)));
       const ctx = { t, lt: t - S.t0, st: t - (S.t0 + step * BAR), step, span: S.span, bar: BAR, beat: BEAT, col, alt, d: S.d, k: inK * outK, final: S.ch.i === CHAPS.length - 1 && !S.next, X0 };
       const fn = SCENES[S.d.type] || SCENES.statement;

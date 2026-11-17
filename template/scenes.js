@@ -18,6 +18,17 @@ function at(c, i, n) {
   const k = n - (c.span - 1), step = Math.min(c.beat, (c.bar * 0.55) / Math.max(k - 1, 1));
   return (c.span - 1) * c.bar + (i - (c.span - 1)) * step;
 }
+/* 一拍一动（11-18 照教程第 02 条"画面每变一次都落在重拍上"，逐帧量标杆样片：四拍都在变，不只是第一拍）：
+ * 第 i 个东西（共 n 个）在 a0 = at(c, i, n) 出场，它的第 k 部分（0 名字 / 1 数 / 2 补充 / 3 强调）落在第 k 拍。
+ * 一句里挤了好几个东西（下一个不到一小节就来）时，各部分压缩成紧挨着出 */
+function bt(c, i, n, k) {
+  const a0 = at(c, i, n), next = i < n - 1 ? at(c, i + 1, n) : c.span * c.bar;
+  return next - a0 >= c.bar * 0.99 ? a0 + k * c.beat : a0 + k * Math.min(0.08, (next - a0) / 4);
+}
+/* 落在拍子上的快速出场：在 t 这一拍开始，0.18 秒内到位（变化要压在鼓点上，不能拖到两拍之间） */
+function hit(c, t, dur = 0.18) { return E.out3(seg(c.lt, t, t + dur)); }
+/* 第四拍的强调：这一拍上闪一下再落回去 */
+function flash4(c, t) { return c.lt >= t ? Math.exp(-(c.lt - t) / 0.16) : 0; }
 /* 到现在为止出场的最后一个是第几个 */
 function current(c, n) { let k = -1; for (let i = 0; i < n; i++) if (c.lt >= at(c, i, n) - 0.001) k = i; return k; }
 
@@ -51,7 +62,7 @@ function pathLabel(fr, p, cw, col, a, glow) {
 }
 function forkFocus(fr, c, paths, f) {
   const n = paths.length, ox = CX, oy = 960, cy = 640, cw = Math.min(300, (CW - 30 * (n - 1)) / n), ch = 210;   // 路收短一点，下面留给放大的那行字
-  const xs = paths.map((_, i) => X0 + cw / 2 + i * (CW - cw) / Math.max(n - 1, 1)), k = E.out3(seg(c.lt, 0, 0.35)), kf = E.out3(seg(c.lt, 0.15, 0.5));
+  const xs = paths.map((_, i) => X0 + cw / 2 + i * (CW - cw) / Math.max(n - 1, 1)), k = hit(c, 0, 0.2), kf = hit(c, c.beat, 0.2);   // 第 1 拍几条路 → 第 2 拍这一条亮起来
   fr.spark(ox, oy, 8, c.col, k);
   paths.forEach((p, i) => {
     const on = i === f, pts = []; for (let s = 0; s <= 24; s++) { const u = s / 24; pts.push([lerp(ox, xs[i], E.io3(u)), lerp(oy, cy + ch / 2, u)]); }
@@ -75,23 +86,24 @@ const SCENES = {
   /* 一个东西：{icon, label?, sub?, count?: 30, unit?: '份', state?: 'no'|'ok'}
    * 不写 count：一个大图标，下面名字；写了 count：一片小图标一个个冒出来，旁边数字跟着数（"投了 30 份简历"） */
   object(fr, c) {
-    const d = c.d, total = Math.max(0, Number(d.count) || 0), n = Math.min(60, total), k = E.out3(seg(c.lt, 0, 0.4));   // 超过 60 只画 60 个，下面的数照样数到真实数量
+    const d = c.d, total = Math.max(0, Number(d.count) || 0), n = Math.min(60, total), k = hit(c, 0, 0.2);   // 超过 60 只画 60 个，下面的数照样数到真实数量
     if (!n) {
       const fl = Math.sin(c.lt * 2.2) * 8;
       fr.glow(CX, 760, 340, c.col, 0.12 * k);
-      drawIcon(fr, d.icon, CX, 740 + fl, 480, c.col, k, E.out3(seg(c.lt, 0.5, 0.8)) > 0.5 ? d.state : null);
-      if (d.label) fr.text(d.label, CX, 1100, { font: 'sansh', size: fit(fr, d.label, 'sansh', 80, CW), color: INK.white, a: E.out3(seg(c.lt, 0.2, 0.55)), glow: 16, glowColor: c.col });
-      if (d.sub) fr.text(d.sub, CX, 1195, { font: 'sansh', size: 44, color: INK.text, a: E.out3(seg(c.lt, 0.35, 0.7)) });
+      drawIcon(fr, d.icon, CX, 740 + fl, 480, c.col, k, c.lt >= 3 * c.beat ? d.state : null);   // 第 1 拍图标 → 第 2 拍名字 → 第 3 拍补充 → 第 4 拍打勾 / 盖红杠
+      if (d.label) fr.text(d.label, CX, 1100, { font: 'sansh', size: fit(fr, d.label, 'sansh', 80, CW), color: INK.white, a: hit(c, c.beat), glow: 16, glowColor: c.col });
+      if (d.sub) fr.text(d.sub, CX, 1195, { font: 'sansh', size: 44, color: INK.text, a: hit(c, 2 * c.beat) });
       return;
     }
     const cols = n <= 4 ? n : n <= 12 ? 4 : n <= 30 ? 6 : 8, rows = Math.ceil(n / cols);
     const cell = Math.min(CW / cols, 640 / rows), x0 = CX - (cols - 1) * cell / 2, y0 = 760 - (rows - 1) * cell / 2;
-    const span = Math.min(c.bar * 0.6, 0.06 * n + 0.3), shown = Math.round(n * E.out2(seg(c.lt, 0.1, 0.1 + span)));
+    const g4 = i => Math.min(3, Math.floor(i * 4 / n)) * c.beat;   // 一片东西分四批，一拍冒一批（每批都踩在拍上）
+    let shownN = 0; for (let i = 0; i < n; i++) if (c.lt >= g4(i)) shownN++;
     for (let i = 0; i < n; i++) {
-      const ki = E.out3(seg(c.lt, 0.1 + span * i / n, 0.1 + span * i / n + 0.25));
-      drawIcon(fr, d.icon, x0 + (i % cols) * cell, y0 + Math.floor(i / cols) * cell, cell * 0.78, c.col, ki, i === n - 1 && seg(c.lt, 0.1 + span, 0.5 + span) > 0.5 ? d.state : null);
+      const ki = hit(c, g4(i), 0.15);
+      drawIcon(fr, d.icon, x0 + (i % cols) * cell, y0 + Math.floor(i / cols) * cell, cell * 0.78, c.col, ki, i === n - 1 && c.lt >= 3 * c.beat + 0.1 ? d.state : null);
     }
-    const lab = String(Math.round(total * shown / Math.max(n, 1))) + (d.unit || '');
+    const lab = String(Math.round(total * shownN / Math.max(n, 1))) + (d.unit || '');
     fr.text(lab, CX, y0 + rows * cell - cell / 2 + 130, { font: 'sansh', size: 110, color: INK.white, a: k, glow: 26, glowColor: c.col });
     if (d.label) fr.text(d.label, CX, y0 + rows * cell - cell / 2 + 230, { font: 'sansh', size: 44, color: INK.text, a: k });
   },
@@ -99,9 +111,9 @@ const SCENES = {
   /* 从 A 到 B：{from:{icon,label,sub}, to:{icon,label,sub}, via?:{icon,label}} —— 第一句出 A，第二句（只有一句就第三拍）
    * 光点带着 via 沿弧线走到 B（"工厂 → 轮船 → 越南""国内 → 海外"） */
   flow(fr, c) {
-    const d = c.d, A = d.from || {}, Bp = d.to || {}, V = d.via, tr = c.span > 1 ? c.bar : c.beat, dur = c.span > 1 ? 0.9 : 0.7;   // 只有一句时第二拍就出发，句子说完前到达
+    const d = c.d, A = d.from || {}, Bp = d.to || {}, V = d.via, tr = c.span > 1 ? c.bar : c.beat, dur = 2 * c.beat;   // 出发在拍上、走两拍、到达也在拍上
     const ax = 280, ay = 640, bx = 800, by = 1080;
-    const ka = E.out3(seg(c.lt, 0, 0.4)), km = E.io3(seg(c.lt, tr, tr + dur)), kb = E.out3(seg(c.lt, tr + dur * 0.65, tr + dur + 0.1));
+    const ka = hit(c, 0), km = E.io3(seg(c.lt, tr, tr + dur)), kb = hit(c, tr + dur, 0.2);
     const pt = u => [lerp(ax, bx, u) + Math.sin(u * Math.PI) * 140, lerp(ay, by, u) - Math.sin(u * Math.PI) * 60];
     const pts = []; for (let i = 0; i <= 40; i++) pts.push(pt(i / 40));
     fr.poly(pts, { color: c.col, w: 3, a: 0.25 * ka, dash: [10, 12] });
@@ -119,7 +131,7 @@ const SCENES = {
   /* 片名卡：{kicker?, top, big, bottom} —— 左对齐，big 是全片最大的字 */
   title(fr, c) {
     const d = c.d, lt = c.lt, Y = 860;
-    const k1 = E.out3(seg(lt, 0.0, 0.35)), k2 = E.out5(seg(lt, 0.12, 0.55)), k3 = E.out3(seg(lt, 0.45, 0.85));
+    const k1 = hit(c, c.beat), k2 = hit(c, 0, 0.22), k3 = hit(c, 2 * c.beat);   // 第 1 拍大字砸下来 → 第 2 拍上面一行 → 第 3 拍下面一行
     if (d.kicker) fr.g({ a: k1 }, () => {
       fr.rect(X0, Y - 300, 48, 3, { fill: c.col });
       fr.text(String(d.kicker).toUpperCase(), X0 + 64, Y - 300, { font: 'sans', size: 26, track: 8, color: c.col, align: 'l', glow: 12 });
@@ -139,7 +151,7 @@ const SCENES = {
   /* 一句话立住：{top?, big, sub?} —— 提问、结论、片尾都用它，居中 */
   statement(fr, c) {
     const d = c.d, lt = c.lt, Y = 860;
-    const k = E.out5(seg(lt, 0.0, 0.5)), k2 = E.out3(seg(lt, 0.3, 0.7));
+    const k = hit(c, 0, 0.25), k2 = hit(c, 2 * c.beat);   // 第 1 拍大字 → 第 3 拍下面一行
     if (d.top) fr.text(d.top, CX, Y - 190, { font: 'sansh', size: 46, track: 10, color: INK.text, a: k * 0.9 });
     const big = String(d.big || ''), size = fit(fr, big, 'sansh', 240, CW, 6);
     fr.text(big, CX, Y, { font: 'sansh', size, track: lerp(40, 6, k), a: k, grad: [[0, '#FFFFFF'], [1, c.col]], glow: 46, glowColor: c.col, glowA: 0.6 });
@@ -153,7 +165,7 @@ const SCENES = {
     const d = c.d, vals = (d.values || [d.value || 0]).map(Number), dec = decimalsOf(vals);
     const n = vals.length, i = Math.max(0, current(c, n)), prev = i > 0 ? vals[i - 1] : (d.from != null ? Number(d.from) : 0);
     const ti = at(c, i, n), packed = n > c.span && i >= c.span - 1;   // 比句子多的值挤在最后一句里按拍子换
-    const k = E.out3(seg(c.lt, ti, ti + (i === 0 && d.from == null ? 0.05 : packed ? 0.4 : 0.7)));
+    const k = E.out3(seg(c.lt, ti, ti + (i === 0 && d.from == null ? 0.05 : 0.25)));   // 数在这一拍上 0.25 秒内滚到位（原来 0.7 秒，落点拖到两拍之间）
     const v = lerp(prev, vals[i], k), Y = d.bar ? 720 : 830;   // 下面没有条就往下放，别让主体挤在上半截
     const str = fmt(v, dec), u = (d.units && d.units[i]) || d.unit || '';
     const P = j => Array.isArray(d.prefix) ? String(d.prefix[j] || '') : String(d.prefix || ''), U = j => Array.isArray(d.suffix) ? String(d.suffix[j] || '') : String(d.suffix || '');   // 几个值单位不同（12 万、30 块）时 prefix / suffix 写成列表
@@ -162,12 +174,12 @@ const SCENES = {
     if (n > 1) size = Math.min(size, 260);   // 上面要给旧值留一行
     if (i > 0) {   // 旧值缩小放在上面、划一道：读得出"从 A 变成了 B"，不和新值叠成重影
       const gs = Math.min(110, size * 0.36), gt = P(i - 1) + fmt(prev, dec) + U(i - 1) + ((d.units && d.units[i - 1]) ? ' ' + d.units[i - 1] : ''), gy = Y - size * 0.62 - gs * 0.6;
-      const gw = fr.measure(gt, { font: 'sansh', size: gs }), ga = 0.55 * E.out3(seg(c.lt, ti, ti + 0.4));
+      const gw = fr.measure(gt, { font: 'sansh', size: gs }), ga = 0.55 * hit(c, ti), tg = packed ? ti + 0.08 : ti + c.beat;   // 第 2 拍把旧值划掉
       fr.text(gt, CX, gy, { font: 'sansh', size: gs, color: c.alt, a: ga });
-      fr.line(CX - gw / 2 - 8, gy, CX - gw / 2 - 8 + (gw + 16) * E.out3(seg(c.lt, ti + 0.1, ti + 0.5)), gy, { color: c.alt, w: 5, a: ga });
+      fr.line(CX - gw / 2 - 8, gy, CX - gw / 2 - 8 + (gw + 16) * hit(c, tg, 0.2), gy, { color: c.alt, w: 5, a: ga });
     }
-    const ent = E.out3(seg(c.lt, 0, 0.35));
-    fr.g({ at: [CX, Y], s: lerp(0.86, 1, ent) * (1 + 0.04 * (1 - seg(c.lt, ti, ti + 0.25)) * (i > 0 ? 1 : 0)) }, () => {
+    const ent = hit(c, 0, 0.2), fl = packed ? 0 : flash4(c, ti + 3 * c.beat);   // 第 4 拍数字闪一下
+    fr.g({ at: [CX, Y], s: lerp(0.86, 1, ent) * (1 + 0.06 * (1 - seg(c.lt, ti, ti + 0.2)) * (i > 0 ? 1 : 0)) * (1 + 0.05 * fl) }, () => {
       const pw = P(i) ? fr.measure(P(i), { font: 'sansh', size: size * 0.45 }) + 14 : 0;
       const nw = fr.measure(str + U(i), { font: 'sansh', size, track: -4 }), uw = u ? 18 + fr.measure(u, { font: 'sansh', size: 46 }) : 0, x0 = -(pw + nw + uw) / 2;
       if (P(i)) fr.text(P(i), x0, -size * 0.12, { font: 'sansh', size: size * 0.45, color: c.col, align: 'l', a: ent, glow: 20 });
@@ -175,7 +187,7 @@ const SCENES = {
       if (u) fr.text(u, x0 + pw + nw + 18, size * 0.22, { font: 'sansh', size: 46, color: INK.text, align: 'l', a: ent });
     });
     if (d.bar) {
-      const b = d.bar, by = 1080, kb = E.out3(seg(c.lt, 0.3, 1.1));
+      const b = d.bar, by = 1080, kb = hit(c, 2 * c.beat, 0.35);   // 第 3 拍下面那条长出来
       fr.text(b.label || '', X0, by - 50, { font: 'sansh', size: 40, track: 2, color: INK.text, align: 'l', a: kb });
       if (b.tag) fr.text(b.tag, XR, by - 50, { font: 'sansh', size: 40, color: NEON.green.main, align: 'r', a: kb, glow: 12 });
       card(fr, X0, by, CW, 66, c.col, { a: kb, r: 12, edge: 0.3 });
@@ -192,19 +204,19 @@ const SCENES = {
     const total = rows.reduce((a, r) => a + sign(r) * (Number(r.value) || 0), 0), dec = decimalsOf(rows.map(r => r.value));
     const gap = rows.length <= 3 ? 165 : 140, y0 = 640 + (4 - Math.min(rows.length, 4)) * 30;   // 整组压在画面中部偏下，别全挤在上半截
     rows.forEach((r, i) => {
-      const a0 = at(c, i, n), k = E.out3(seg(c.lt, a0, a0 + 0.4)); if (k <= 0) return;
-      const y = y0 + i * gap, hot = i === cur, neg = sign(r) < 0, colr = neg ? NEON.red.main : NEON.green.main;
+      const k = hit(c, bt(c, i, n, 0)); if (k <= 0) return;   // 第 1 拍名目 → 第 2 拍金额落下 → 第 4 拍闪一下
+      const y = y0 + i * gap, hot = i === cur, neg = sign(r) < 0, colr = neg ? NEON.red.main : NEON.green.main, kv = hit(c, bt(c, i, n, 1)), fl = hot ? flash4(c, bt(c, i, n, 3)) : 0;
       fr.text(r.label, X0, y, { font: 'sansh', size: 62, color: INK.white, align: 'l', a: k * (hot ? 1 : 0.7) });
-      fr.text((i === 0 && !neg ? '' : neg ? '− ' : '+ ') + pre + fmt(Number(r.value) || 0, dec) + suf, XR, y, { font: 'sansh', size: 68, color: hot ? colr : mix(colr, '#888', 0.4), align: 'r', a: k, glow: hot ? 18 : 0 });
-      fr.line(X0, y + 52, XR, y + 52, { color: '#FFFFFF', w: 1, a: 0.08 * k });
+      fr.g({ at: [XR, y], s: lerp(1.25, 1, kv) * (1 + 0.1 * fl) }, () => fr.text((i === 0 && !neg ? '' : neg ? '− ' : '+ ') + pre + fmt(Number(r.value) || 0, dec) + suf, 0, 0, { font: 'sansh', size: 68, color: hot ? colr : mix(colr, '#888', 0.4), align: 'r', a: kv, glow: hot ? 18 + 30 * fl : 0 }));
+      fr.line(X0, y + 52, X0 + CW * hit(c, bt(c, i, n, 2), 0.25), y + 52, { color: '#FFFFFF', w: 1, a: 0.12 * k });
     });
     if (hasT) {
-      const a0 = at(c, n - 1, n), k = E.out3(seg(c.lt, a0, a0 + 0.5)); if (k <= 0) return;
-      const y = y0 + rows.length * gap + 40, colr = total < 0 ? NEON.red.main : NEON.green.main;
+      const k = hit(c, bt(c, n - 1, n, 0), 0.25); if (k <= 0) return;   // 第 1 拍划线 → 第 2 拍合计砸下来 → 第 4 拍闪
+      const y = y0 + rows.length * gap + 40, colr = total < 0 ? NEON.red.main : NEON.green.main, kv = hit(c, bt(c, n - 1, n, 1), 0.22), fl = flash4(c, bt(c, n - 1, n, 3));
       fr.line(X0, y - 50, X0 + CW * k, y - 50, { color: c.col, w: 4, glow: 12 });
       fr.text(String(d.total), X0, y + 34, { font: 'sansh', size: 64, color: INK.white, align: 'l', a: k });
-      const v = total * E.out3(seg(c.lt, a0 + 0.1, a0 + 0.8));
-      fr.text((total < 0 ? '− ' : '') + pre + fmt(Math.abs(v), dec) + suf, XR, y + 44, { font: 'sansh', size: 150, color: colr, align: 'r', a: k, glow: 30 });
+      const v = total * kv;
+      fr.text((total < 0 ? '− ' : '') + pre + fmt(Math.abs(v), dec) + suf, XR, y + 44, { font: 'sansh', size: 150 * (1 + 0.08 * fl), color: colr, align: 'r', a: Math.max(kv, 0.001), glow: 30 + 30 * fl });
     }
   },
 
@@ -214,28 +226,28 @@ const SCENES = {
     const max = Number(d.max) || Math.max(...rows.map(r => Number(r.value) || 0), 1);
     const gap = Math.min(170, 900 / Math.max(n, 1)), y0 = 470 + (900 - gap * n) / 2;
     rows.forEach((r, i) => {
-      const a0 = at(c, i, n), k = E.out3(seg(c.lt, a0, a0 + 0.45)); if (k <= 0) return;
-      const y = y0 + i * gap, hot = i === cur, dim = hot ? 1 : 0.5;
+      const k = hit(c, bt(c, i, n, 0)); if (k <= 0) return;   // 第 1 拍名字 → 第 2 拍数和条一下长满 → 第 3 拍补充 → 第 4 拍闪一下
+      const y = y0 + i * gap, hot = i === cur, dim = hot ? 1 : 0.5, kv = hit(c, bt(c, i, n, 1), 0.25), fl = hot ? flash4(c, bt(c, i, n, 3)) : 0;
       fr.text(r.label, X0, y, { font: 'sansh', size: 46, color: INK.white, align: 'l', a: k * dim });
-      const val = (Number(r.value) || 0) * E.out3(seg(c.lt, a0 + 0.1, a0 + 0.8));
-      fr.text(fmt(val, decimalsOf([r.value])) + (d.unit || ''), XR, y, { font: 'sansh', size: 46, color: hot ? c.col : INK.text, align: 'r', a: k, glow: hot ? 18 : 0 });
+      const val = (Number(r.value) || 0) * kv;
+      fr.text(fmt(val, decimalsOf([r.value])) + (d.unit || ''), XR, y, { font: 'sansh', size: 46 * (1 + 0.12 * fl), color: hot ? c.col : INK.text, align: 'r', a: Math.max(kv, 0.001) * k, glow: hot ? 18 + 30 * fl : 0 });
       fr.rect(X0, y + 46, CW, 16, { r: 8, fill: '#FFFFFF', fa: 0.07 * k });
-      fr.rect(X0, y + 46, CW * clamp(val / max), 16, { r: 8, fill: hot ? c.col : mix(c.col, '#444', 0.5), fa: k, glow: hot ? 16 : 0 });
-      if (r.tag) fr.text(r.tag, X0, y + 98, { font: 'sans', size: 30, color: INK.dim, align: 'l', a: k * dim });
+      fr.rect(X0, y + 46, CW * clamp(val / max), 16, { r: 8, fill: hot ? c.col : mix(c.col, '#444', 0.5), fa: k, glow: hot ? 16 + 24 * fl : 0 });
+      if (r.tag) fr.text(r.tag, X0, y + 98, { font: 'sans', size: 30, color: INK.dim, align: 'l', a: hit(c, bt(c, i, n, 2)) * dim });
     });
   },
 
   /* 环形占比：{value:40, suffix:'%', label:'利润被吃掉', rows:[{text, tag?}]} —— 环先转满，再一句点一条原因 */
   ring(fr, c) {
     const d = c.d, rows = d.rows || [], n = rows.length, cur = current(c, n), cy = 720, R = 230;
-    const k = E.out3(seg(c.lt, 0, 0.9)), v = Number(d.value || 0) * k;
+    const k = hit(c, 0, 0.2), v = Number(d.value || 0) * hit(c, c.beat, 0.5);   // 第 1 拍环出来 → 第 2 拍起转到那个占比
     for (let j = 0; j < 3; j++) fr.arc(CX, cy, R + 38 + j * 22, c.lt * (0.3 + j * 0.2) + j, c.lt * (0.3 + j * 0.2) + j + 1.2 + j * 0.6, { color: j === 1 ? c.alt : c.col, w: 2, a: 0.25 * k });
     fr.circle(CX, cy, R, { color: '#FFFFFF', w: 18, a: 0.07 * k });
     fr.arc(CX, cy, R, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(v / 100), { color: c.col, w: 18, a: k, glow: 26 });
     if (d.label) fr.text(d.label, CX, cy - 82, { font: 'sans', size: 30, track: 4, color: INK.text, a: k });
     fr.text(fmt(v, decimalsOf([d.value])) + (d.suffix == null ? '%' : d.suffix), CX, cy + 14, { font: 'sansh', size: 128, color: INK.white, a: k, glow: 30, glowColor: c.col, glowA: 0.6 });
     rows.forEach((r, i) => {
-      const a0 = at(c, i, n) + (c.span > 1 && i === 0 ? 0.6 : 0), kk = E.out3(seg(c.lt, a0, a0 + 0.4)); if (kk <= 0) return;
+      const a0 = c.span > 1 && i === 0 ? at(c, i, n) + 2 * c.beat : at(c, i, n), kk = hit(c, a0); if (kk <= 0) return;   // 第一条等环转满（第 3 拍）再出
       const y = 1060 + i * 82, hot = i === cur;
       card(fr, X0, y - 32, CW, 64, c.col, { a: kk * (hot ? 1 : 0.6), r: 14, edge: hot ? 0.7 : 0.25, glow: hot ? 14 : 0 });
       fr.circle(X0 + 34, y, 9, { fill: hot ? c.col : INK.dim, a: kk, glow: hot ? 12 : 0 });
@@ -250,8 +262,8 @@ const SCENES = {
     const d = c.d, nodes = d.nodes || [], n = nodes.length, y = 820, red = NEON.red.main;
     const xs = nodes.map((_, i) => n === 1 ? CX : X0 + 40 + (CW - 80) * i / (n - 1));
     const brk = d.breakAt != null ? Number(d.breakAt) : -1, bs = d.breakStep != null ? Number(d.breakStep) : 1;
-    const bt = bs * c.bar, kb = brk >= 0 ? E.out3(seg(c.lt, bt, bt + 0.3)) : 0;
-    const shake = kb > 0 ? Math.sin(c.lt * 70) * 10 * (1 - seg(c.lt, bt, bt + 0.4)) : 0;
+    const tb = bs * c.bar, kb = brk >= 0 ? hit(c, tb, 0.15) : 0;   // 断开正好砸在小节第一拍
+    const shake = kb > 0 ? Math.sin(c.lt * 70) * 10 * (1 - seg(c.lt, tb, tb + 0.4)) : 0;
     const per = Math.min(c.beat, (c.bar * 0.9) / Math.max(n, 1));
     const t0 = i => c.span > 1 ? at(c, i, n) : i * per;   // 一镜撑几句：一句亮一个节点（多的挤在最后一句）；只有一句：按拍子一口气亮完
     fr.g({ at: [shake, 0] }, () => {
@@ -264,7 +276,7 @@ const SCENES = {
         fr.line(xb, y, xs[n - 1], y, { color: '#5A6075', w: 4, a: kb });
       }
       nodes.forEach((nd, i) => {
-        const a0 = t0(i), k = E.out3(seg(c.lt, a0, a0 + 0.3)); if (k <= 0) return;
+        const a0 = t0(i), k = hit(c, a0), ks = c.span > 1 ? hit(c, bt(c, i, n, 1)) : k, ki = c.span > 1 ? hit(c, bt(c, i, n, 2)) : k; if (k <= 0) return;   // 一句一个节点时：第 1 拍点和名字 → 第 2 拍年份 → 第 3 拍图标
         const lost = kb > 0 && i > brk, colr = lost ? mix(c.col, '#5A6075', kb) : c.col, up = i % 2 === 0;
         fr.circle(xs[i], y, 22 * k, { fill: INK.base, color: colr, w: 5, glow: lost ? 0 : 20 });
         fr.circle(xs[i], y, 8 * k, { fill: colr });
@@ -272,11 +284,11 @@ const SCENES = {
         const ls = fit(fr, nd.label, 'sansh', 58, Math.min((CW / Math.max(n - 1, 1)) * 1.6, CW * 0.6)), lw = fr.measure(nd.label, { font: 'sansh', size: ls });
         const sw = nd.sub ? fr.measure(nd.sub, { font: 'mono', size: 38 }) : 0, tx = clamp(xs[i], 48 + Math.max(lw, sw) / 2, W - 48 - Math.max(lw, sw) / 2);   // 两头的节点字长时往里挪，别贴边
         fr.text(nd.label, tx, y + (up ? -110 : 110), { font: 'sansh', size: ls, color: lost ? '#6A7088' : INK.white, a: k });
-        if (nd.sub) fr.text(nd.sub, tx, y + (up ? -178 : 176), { font: 'mono', size: 38, color: lost ? '#555A70' : c.col, a: k, glow: lost ? 0 : 10 });
-        if (nd.icon) drawIcon(fr, nd.icon, xs[i], y + (up ? -280 : 280), 110, lost ? '#5A6075' : c.col, k);
+        if (nd.sub) fr.text(nd.sub, tx, y + (up ? -178 : 176), { font: 'mono', size: 38, color: lost ? '#555A70' : c.col, a: ks, glow: lost ? 0 : 10 });
+        if (nd.icon) drawIcon(fr, nd.icon, xs[i], y + (up ? -280 : 280), 110, lost ? '#5A6075' : c.col, ki);
       });
     });
-    if (kb > 0) fr.flash(0.18 * (1 - seg(c.lt, bt, bt + 0.3)), red);
+    if (kb > 0) fr.flash(0.18 * (1 - seg(c.lt, tb, tb + 0.3)), red);
   },
 
   /* 岔路：{paths:[{label, sub}], pick: 2} —— 第一句路长出来，之后每句划掉一条，最后一句点亮 pick
@@ -287,11 +299,11 @@ const SCENES = {
     const ox = CX, oy = 1300, cy = 660, cw = Math.min(300, (CW - 30 * (n - 1)) / n), ch = 210;
     const xs = paths.map((_, i) => X0 + cw / 2 + i * (CW - cw) / Math.max(n - 1, 1));
     const kills = paths.map((_, i) => i).filter(i => i !== pick);
-    const killAt = i => { const j = kills.indexOf(i); if (j < 0) return 1e9; const steps = Math.max(c.span - (none ? 1 : 2), 1); return c.span <= 1 ? 0.5 + j * c.beat : (1 + Math.min(j, steps - 1)) * c.bar + Math.max(0, j - (steps - 1)) * c.beat; };
-    const pickAt = none ? 1e9 : c.span <= 1 ? 0.5 + kills.length * c.beat : Math.max(c.span - 1, 1) * c.bar;
+    const killAt = i => { const j = kills.indexOf(i); if (j < 0) return 1e9; const steps = Math.max(c.span - (none ? 1 : 2), 1); return c.span <= 1 ? (j + 1) * c.beat : (1 + Math.min(j, steps - 1)) * c.bar + Math.max(0, j - (steps - 1)) * c.beat; };
+    const pickAt = none ? 1e9 : c.span <= 1 ? (kills.length + 1) * c.beat : Math.max(c.span - 1, 1) * c.bar;
     fr.spark(ox, oy, 8, c.col, E.out3(seg(c.lt, 0, 0.3)));
     paths.forEach((p, i) => {
-      const k = E.out3(seg(c.lt, 0.05 + i * 0.12, 0.6 + i * 0.12)), kx = ss(c.lt, killAt(i), killAt(i) + 0.3), kp = i === pick ? E.out3(seg(c.lt, pickAt, pickAt + 0.4)) : 0;
+      const g0 = c.span > 1 ? Math.min(i, 3) * c.beat : i * Math.min(0.12, c.beat / Math.max(n, 1)), k = hit(c, g0, 0.25), kx = hit(c, killAt(i), 0.15), kp = i === pick ? hit(c, pickAt, 0.2) : 0;   // 一句以上：路一拍长出一条；划掉、点亮都砸在拍上
       const pts = []; for (let s = 0; s <= 24; s++) { const u = s / 24; pts.push([lerp(ox, xs[i], E.io3(u)), lerp(oy, cy + ch / 2, u)]); }
       fr.poly(pts, { color: kp > 0 ? c.col : '#8A90A8', w: kp > 0 ? 5 : 2.5, a: (0.7 - 0.45 * kx) * (kp > 0 ? 1 : 1), k, glow: kp > 0 ? 18 : 0 });
       if (k <= 0) return;
@@ -310,14 +322,15 @@ const SCENES = {
   compare(fr, c) {
     const d = c.d, L = d.left || {}, R = d.right || {}, y = d.badge ? 560 : 680, h = 440;   // 没有角标时整体往下放，主体别挤在上半截
     const tr = c.span > 1 ? c.bar : c.beat * 2;
-    const tb = d.badge && c.span >= 3 ? 2 * c.bar : tr + 0.6;   // 一镜三句以上：左边 → 右边 → 角标各占一句，多撑一句（11-18：角标和右边一起出，后面几句画面不动）
-    const k1 = E.out3(seg(c.lt, 0, 0.4)), ka = E.out3(seg(c.lt, tr, tr + 0.5)), k2 = E.out3(seg(c.lt, tr + 0.25, tr + 0.7)), kb = E.out5(seg(c.lt, tb, tb + 0.4));
+    const tb = d.badge && c.span >= 3 ? 2 * c.bar : c.span > 1 ? tr + 2 * c.beat : tr + c.beat;   // 一镜三句以上：左边 → 右边 → 角标各占一句
+    // 一拍一动：左边卡片第 1 拍、左边的数第 2 拍；箭头在右边那一句的第 1 拍冲过去、右边的数第 2 拍砸下来
+    const k1 = hit(c, 0), kv1 = c.span > 1 ? hit(c, c.beat) : k1, ka = hit(c, tr, 0.25), k2 = hit(c, tr + (c.span > 1 ? c.beat : 0.15)), kb = hit(c, tb, 0.25);
     card(fr, X0, y, CW, h, c.col, { a: k1, edge: 0.35 });
     fr.text(L.label || '', X0 + 50, y + 80, { font: 'sansh', size: 40, track: 3, color: INK.text, align: 'l', a: k1 });
     const ls = fit(fr, String(L.value), 'sansh', 110, CW * 0.4);
     if (L.icon) drawIcon(fr, L.icon, X0 + 120, y - 110, 150, c.col, k1);
-    fr.text(String(L.value || ''), X0 + 50, y + 190, { font: 'sansh', size: ls, color: INK.white, align: 'l', a: k1 });
-    if (L.sub) fr.text(L.sub, X0 + 50, y + 280, { font: 'sans', size: 32, color: INK.dim, align: 'l', a: k1 });
+    fr.text(String(L.value || ''), X0 + 50, y + 190, { font: 'sansh', size: ls, color: INK.white, align: 'l', a: kv1 });
+    if (L.sub) fr.text(L.sub, X0 + 50, y + 280, { font: 'sans', size: 32, color: INK.dim, align: 'l', a: c.span > 1 ? hit(c, 2 * c.beat) : k1 });
     const ax0 = X0 + 60, ax1 = XR - 60, ay = y + 360;
     fr.line(ax0, ay, lerp(ax0, ax1, ka), ay, { color: c.col, w: 3, a: 0.9, glow: 12 });
     if (ka > 0 && ka < 1) fr.spark(lerp(ax0, ax1, ka), ay, 7, c.col, 1);
@@ -326,7 +339,7 @@ const SCENES = {
     const rs = fit(fr, String(R.value), 'sansh', 130, CW * 0.45);
     if (R.icon) drawIcon(fr, R.icon, XR - 120, y - 110, 150, c.col, k2);
     fr.text(String(R.value || ''), XR - 50, y + 190 + (1 - k2) * 20, { font: 'sansh', size: rs, color: c.col, align: 'r', a: k2, glow: 30 });
-    if (R.sub) fr.text(R.sub, XR - 50, y + 280, { font: 'sans', size: 32, color: INK.dim, align: 'r', a: k2 });
+    if (R.sub) fr.text(R.sub, XR - 50, y + 280, { font: 'sans', size: 32, color: INK.dim, align: 'r', a: c.span > 1 ? hit(c, tr + 2 * c.beat) : k2 });
     if (d.badge && kb > 0) fr.g({ at: [CX, y + h + 120], s: lerp(1.3, 1, kb) }, () => {
       card(fr, -170, -70, 340, 140, NEON.green.main, { a: kb, edge: 0.9, glow: 20, r: 18 });
       fr.text(d.badge.label || '', 0, -28, { font: 'sans', size: 28, color: NEON.green.alt, a: kb });
@@ -341,18 +354,18 @@ const SCENES = {
     const gap = Math.min(huge ? 250 : big ? 200 : 150, 760 / Math.max(n, 1)), y0 = 620 + (760 - gap * n) / 2;
     if (d.title) fr.text(d.title, X0, y0 - (big ? 130 : 90), { font: 'sansh', size: big ? 54 : 44, color: INK.text, align: 'l', a: E.out3(seg(c.lt, 0, 0.3)) });
     rows.forEach((r, i) => {
-      const a0 = at(c, i, n), k = E.out3(seg(c.lt, a0, a0 + 0.35)); if (k <= 0) return;
-      const y = y0 + i * gap, ok = r.ok !== false, hot = i === cur, kt = E.out3(seg(c.lt, a0 + 0.15, a0 + 0.5));
+      const k = hit(c, bt(c, i, n, 0)); if (k <= 0) return;   // 第 1 拍条目 → 第 2 拍打勾 / 划掉 → 第 3 拍补充 → 第 4 拍闪
+      const y = y0 + i * gap, ok = r.ok !== false, hot = i === cur, kt = hit(c, bt(c, i, n, 1), 0.2), fl = hot ? flash4(c, bt(c, i, n, 3)) : 0;
       const col = ok ? c.col : '#6A7088';
       const q = bx / 68;
-      fr.rect(X0, y - bx / 2, bx, bx, { r: 14 * q, color: col, w: 3, a: k, glow: ok && hot ? 16 : 0, fill: INK.card, fa: 0.7 * k });
+      fr.rect(X0, y - bx / 2, bx, bx, { r: 14 * q, color: col, w: 3, a: k, glow: ok && hot ? 16 + 30 * fl : 0, fill: INK.card, fa: 0.7 * k });
       if (ok) fr.poly([[X0 + 16 * q, y + 2 * q], [X0 + 30 * q, y + 18 * q], [X0 + 54 * q, y - 16 * q]], { color: col, w: 6 * q, k: kt, glow: 14 });
       else fr.line(X0 + 18 * q, y, X0 + (18 + 32 * kt) * q, y, { color: col, w: 6 * q });
       if (r.icon) drawIcon(fr, r.icon, X0 + bx + 32 + bx * 0.45, y, bx * 0.9, ok ? col : '#6A7088', k);
       const tx = X0 + bx + 32 + (r.icon ? bx + 20 : 0), ts = Math.min(fs, fit(fr, r.text, 'sansh', fs, XR - tx - (r.note ? 200 : 0)));
       fr.text(r.text, tx, y, { font: 'sansh', size: ts, color: ok ? (hot ? INK.white : INK.text) : '#6A7088', align: 'l', a: k });
       if (!ok) fr.line(tx - 4, y, tx + 4 + fr.measure(r.text, { font: 'sansh', size: ts }) * kt, y, { color: '#6A7088', w: 3, a: k });
-      if (r.note) fr.text(r.note, XR, y, { font: 'sansh', size: big ? 38 : 30, color: ok ? c.col : '#6A7088', align: 'r', a: k * (hot ? 1 : 0.7) });
+      if (r.note) fr.text(r.note, XR, y, { font: 'sansh', size: big ? 38 : 30, color: ok ? c.col : '#6A7088', align: 'r', a: hit(c, bt(c, i, n, 2)) * (hot ? 1 : 0.7) });
     });
   },
 
@@ -362,14 +375,14 @@ const SCENES = {
     const big = n <= 3, R = big ? 56 : 44, ts = big ? 62 : 48, ns = big ? 30 : 28;   // 步骤少就放大
     const gap = Math.min(big ? 240 : 190, 820 / Math.max(n, 1)), y0 = 600 + (820 - gap * n) / 2, x = X0 + R + 6;
     rows.forEach((r, i) => {
-      const a0 = at(c, i, n), k = E.out3(seg(c.lt, a0, a0 + 0.4)); if (k <= 0) return;
-      const y = y0 + i * gap, hot = i === cur;
-      if (i < n - 1) fr.line(x, y + R + 2, x, y + R + 2 + (gap - 2 * R - 4) * E.out3(seg(c.lt, a0 + 0.3, a0 + 0.8)), { color: c.col, w: 3, a: 0.5 });
-      fr.circle(x, y, R, { fill: hot ? c.col : INK.card, fa: hot ? 0.95 : 0.8, color: c.col, w: 3, a: k, glow: hot ? 22 : 0 });
+      const k = hit(c, bt(c, i, n, 0)); if (k <= 0) return;   // 第 1 拍编号和这一步 → 第 3 拍补充 → 第 4 拍连线往下长、闪一下
+      const y = y0 + i * gap, hot = i === cur, fl = hot ? flash4(c, bt(c, i, n, 3)) : 0;
+      if (i < n - 1) fr.line(x, y + R + 2, x, y + R + 2 + (gap - 2 * R - 4) * hit(c, bt(c, i, n, 3), 0.3), { color: c.col, w: 3, a: 0.5 });
+      fr.circle(x, y, R * lerp(0.6, 1, k) * (1 + 0.1 * fl), { fill: hot ? c.col : INK.card, fa: hot ? 0.95 : 0.8, color: c.col, w: 3, a: k, glow: hot ? 22 + 30 * fl : 0 });
       fr.text(String(i + 1).padStart(2, '0'), x, y + 2, { font: 'sansh', size: R * 0.78, color: hot ? INK.base : c.col, a: k });
       const tx = x + R + 40, tsz = Math.min(ts, fit(fr, r.text, 'sansh', ts, XR - tx));
       fr.text(r.text, tx, y - (r.note ? ts * 0.38 : 0), { font: 'sansh', size: tsz, color: hot ? INK.white : INK.text, align: 'l', a: k });
-      if (r.note) fr.text(r.note, tx, y + ts * 0.8, { font: 'sansr', size: ns + (big ? 4 : 0), color: INK.dim, align: 'l', a: k });
+      if (r.note) fr.text(r.note, tx, y + ts * 0.8, { font: 'sansr', size: ns + (big ? 4 : 0), color: INK.dim, align: 'l', a: hit(c, bt(c, i, n, 2)) });
     });
   },
 
@@ -382,9 +395,9 @@ const SCENES = {
     fr.comet(CX + Math.cos(ang) * R, cy + Math.sin(ang) * R, 120, 7, c.col, k, ang + Math.PI / 2);
     if (d.center) fr.text(d.center, CX, cy, { font: 'sansh', size: fit(fr, d.center, 'sansh', 76, R * 1.4), color: INK.white, a: k, glow: 24, glowColor: c.col });
     nodes.forEach((nd, i) => {
-      const a0 = at(c, i, n), kk = E.out3(seg(c.lt, a0, a0 + 0.4)); if (kk <= 0) return;
-      const t = -Math.PI / 2 + Math.PI * 2 * i / n, x = CX + Math.cos(t) * R, y = cy + Math.sin(t) * R, hot = i === act;
-      fr.circle(x, y, 78 * lerp(0.6, 1, kk) * (hot ? 1.08 : 1), { fill: INK.card, fa: 0.95, color: hot ? c.col : c.alt, w: 3, a: kk, glow: hot ? 26 : 0 });
+      const kk = hit(c, bt(c, i, n, 0)); if (kk <= 0) return;   // 第 1 拍节点 → 第 4 拍闪一下
+      const t = -Math.PI / 2 + Math.PI * 2 * i / n, x = CX + Math.cos(t) * R, y = cy + Math.sin(t) * R, hot = i === act, fl = hot ? flash4(c, bt(c, i, n, 3)) : 0;
+      fr.circle(x, y, 78 * lerp(0.6, 1, kk) * (hot ? 1.08 : 1) * (1 + 0.12 * fl), { fill: INK.card, fa: 0.95, color: hot ? c.col : c.alt, w: 3, a: kk, glow: hot ? 26 : 0 });
       if (nd.icon) { drawIcon(fr, nd.icon, x, y - 4, 92, hot ? c.col : c.alt, kk); fr.text(nd.label, x, y + 110, { font: 'sansh', size: fit(fr, nd.label, 'sansh', 40, 200), color: hot ? c.col : INK.white, a: kk }); }
       else {
         fr.text(nd.label, x, y - (nd.sub ? 14 : 0), { font: 'sansh', size: fit(fr, nd.label, 'sansh', 40, 130), color: hot ? c.col : INK.white, a: kk });
@@ -399,18 +412,18 @@ const SCENES = {
     const cols = n <= 3 ? 1 : 2, rowsN = Math.ceil(n / cols), gw = cols === 1 ? CW : (CW - 30) / 2, gh = Math.min(260, (860 - 30 * (rowsN - 1)) / rowsN);
     const y0 = 470 + (900 - (gh * rowsN + 30 * (rowsN - 1))) / 2;
     items.forEach((it, i) => {
-      const a0 = at(c, i, n), k = E.out3(seg(c.lt, a0, a0 + 0.4)); if (k <= 0) return;
-      const x = X0 + (i % cols) * (gw + 30), y = y0 + Math.floor(i / cols) * (gh + 30), hot = i === act || i === d.pick;
-      card(fr, x, y, gw, gh, hot ? c.col : '#5A6075', { a: k * (hot ? 1 : 0.5), edge: hot ? 0.9 : 0.4, glow: hot ? 22 : 0 });
+      const k = hit(c, bt(c, i, n, 0)); if (k <= 0) return;   // 第 1 拍卡片 → 第 2 拍标签 → 第 3 拍内容 → 第 4 拍闪
+      const x = X0 + (i % cols) * (gw + 30), y = y0 + Math.floor(i / cols) * (gh + 30), hot = i === act || i === d.pick, kt = hit(c, bt(c, i, n, 1)), kr = hit(c, bt(c, i, n, 2)), fl = hot ? flash4(c, bt(c, i, n, 3)) : 0;
+      card(fr, x, y, gw, gh, hot ? c.col : '#5A6075', { a: k * (hot ? 1 : 0.5), edge: hot ? 0.9 : 0.4, glow: hot ? 22 + 30 * fl : 0 });
       if (it.icon) {   // 有图标：图标大、居中在上，名字在下
         const is = Math.min(gh * 0.5, gw * 0.42);
         drawIcon(fr, it.icon, x + gw / 2, y + gh * 0.38, is, hot ? c.col : '#8A90A8', k);
         fr.text(it.name, x + gw / 2, y + gh * 0.8, { font: 'sansh', size: fit(fr, it.name, 'sansh', 44, gw - 40), color: hot ? c.col : INK.text, a: k, glow: hot ? 14 : 0 });
-        if (it.tag) fr.text(it.tag, x + gw - 24, y + 36, { font: 'sans', size: 24, color: INK.dim, align: 'r', a: k });
+        if (it.tag) fr.text(it.tag, x + gw - 24, y + 36, { font: 'sans', size: 24, color: INK.dim, align: 'r', a: kt });
       } else {
         fr.text(it.name, x + 34, y + 58, { font: 'sansh', size: fit(fr, it.name, 'sansh', 46, gw - 140), color: hot ? c.col : INK.text, align: 'l', a: k, glow: hot ? 14 : 0 });
-        if (it.tag) fr.text(it.tag, x + gw - 30, y + 58, { font: 'sans', size: 26, color: INK.dim, align: 'r', a: k });
-        (it.rows || []).slice(0, 3).forEach((r, j) => fr.text(r, x + 34, y + 122 + j * 44, { font: 'sansr', size: 30, color: hot ? INK.text : INK.dim, align: 'l', a: k * (hot ? 1 : 0.6) }));
+        if (it.tag) fr.text(it.tag, x + gw - 30, y + 58, { font: 'sans', size: 26, color: INK.dim, align: 'r', a: kt });
+        (it.rows || []).slice(0, 3).forEach((r, j) => fr.text(r, x + 34, y + 122 + j * 44, { font: 'sansr', size: 30, color: hot ? INK.text : INK.dim, align: 'l', a: kr * (hot ? 1 : 0.6) }));
       }
     });
   },

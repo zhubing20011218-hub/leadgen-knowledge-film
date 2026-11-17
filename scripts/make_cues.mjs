@@ -130,7 +130,7 @@ for (const sh of SHOTS) {
   if (ty === 'number') {
     const v = (d.values || []).map(Number);
     v.forEach((x, i) => {
-      const t = t0 + itemAt(span, i, v.length) + 0.05;
+      const t = t0 + itemAt(span, i, v.length);
       if (i === 0) { note(t, step(2)); return; }
       const upward = x > v[i - 1], run = upward ? [0, 1, 2, 4] : [4, 2, 1, 0];   // 往上涨：上行；往下掉：下行
       run.forEach((k, j) => note(t + j * BEAT / 4, step(k + (upward ? 1 : 0)), 0.07));
@@ -138,43 +138,44 @@ for (const sh of SHOTS) {
     });
   } else if (ty === 'fork' && d.focus == null) {
     const paths = d.paths || [], none = d.pick === -1 || d.pick === 'none', pick = none ? -1 : d.pick != null ? Number(d.pick) : paths.length - 1;
-    paths.forEach((_, i) => note(t0 + 0.05 + i * 0.12, step(i), 0.05));
+    paths.forEach((_, i) => note(t0 + (span > 1 ? Math.min(i, 3) * BEAT : i * Math.min(0.12, BEAT / paths.length)), step(i), 0.05));   // 路一拍长出一条
     const kills = paths.map((_, i) => i).filter((i) => i !== pick), steps = Math.max(span - (none ? 1 : 2), 1);
     kills.forEach((i, j) => {   // 和 scenes.js 的 killAt 一样：一句划掉一条
-      const kt = span <= 1 ? 0.5 + j * BEAT : (1 + Math.min(j, steps - 1)) * BAR + Math.max(0, j - (steps - 1)) * BEAT;
-      thud(t0 + kt + 0.17, 0.26); note(t0 + kt + 0.17, up(ladder[0], 0), 0.06, 'pluck');   // 划线动画 0.3 秒，变化最大在中段
+      const kt = span <= 1 ? (j + 1) * BEAT : (1 + Math.min(j, steps - 1)) * BAR + Math.max(0, j - (steps - 1)) * BEAT;
+      thud(t0 + kt, 0.26); note(t0 + kt, up(ladder[0], 0), 0.06, 'pluck');   // 划掉砸在拍上
     });
-    if (!none) stab(t0 + (span <= 1 ? 0.5 + kills.length * BEAT : Math.max(span - 1, 1) * BAR) + 0.05, [step(0), step(2), step(4)], 0.07);   // 留下的那条：亮和弦
-    else events.push({type: 'boom', t: r3(t0 + (span - 1) * BAR + 0.1), gain: 0.3, freq: 45, dur: 0.8});
+    if (!none) stab(t0 + (span <= 1 ? (kills.length + 1) * BEAT : Math.max(span - 1, 1) * BAR), [step(0), step(2), step(4)], 0.07);   // 留下的那条：亮和弦
+    else events.push({type: 'boom', t: r3(t0 + (span - 1) * BAR), gain: 0.3, freq: 45, dur: 0.8});
   } else if (ty === 'fork') {
-    note(t0 + 0.1, step(Number(d.focus) * 2), 0.09, 'bell');
+    note(t0, step(0), 0.05); note(t0 + BEAT, step(Number(d.focus) * 2), 0.09, 'bell');   // 第 2 拍这一条亮起来
   } else if (ty === 'checklist') {
-    list.forEach((r, i) => { const t = t0 + itemAt(span, i, list.length) + 0.15; if (r && r.ok === false) { thud(t, 0.22); note(t, up(ladder[0], 0), 0.05, 'pluck'); } else note(t, step(2 + i), 0.09, 'bell'); });
+    list.forEach((r, i) => { const a = t0 + itemAt(span, i, list.length), t = a + (list.length <= span ? BEAT : 0); note(a, step(i), 0.05, 'pluck'); if (r && r.ok === false) { thud(t, 0.22); note(t, up(ladder[0], 0), 0.05, 'pluck'); } else note(t, step(2 + i), 0.09, 'bell'); });   // 第 1 拍条目、第 2 拍打勾 / 划掉
   } else if (ty === 'ledger') {
     const rows = d.rows || [], n = rows.length + (d.total ? 1 : 0); let k = 3;
-    rows.forEach((r, i) => { const neg = r && (r.op === '-' || r.op === '−'); k = i === 0 ? 3 : k + (neg ? -1 : 1); note(t0 + itemAt(span, i, n) + 0.15, step(Math.max(0, k)), 0.08); if (neg) thud(t0 + itemAt(span, i, n) + 0.15, 0.15); });   // 每行淡入 0.4 秒
+    rows.forEach((r, i) => { const neg = r && (r.op === '-' || r.op === '−'); k = i === 0 ? 3 : k + (neg ? -1 : 1); note(t0 + itemAt(span, i, n), step(Math.max(0, k)), 0.06); note(t0 + itemAt(span, i, n) + (n <= span ? BEAT : 0), step(Math.max(0, k)), 0.08); if (neg) thud(t0 + itemAt(span, i, n) + (n <= span ? BEAT : 0), 0.15); });   // 第 1 拍名目、第 2 拍金额落下
     if (d.total) {
-      const tot = rows.reduce((a, r) => a + ((r && (r.op === '-' || r.op === '−')) ? -1 : 1) * (Number(r && r.value) || 0), 0), t = t0 + itemAt(span, n - 1, n) + 0.1;
+      const tot = rows.reduce((a, r) => a + ((r && (r.op === '-' || r.op === '−')) ? -1 : 1) * (Number(r && r.value) || 0), 0), t = t0 + itemAt(span, n - 1, n) + (n <= span ? BEAT : 0);   // 合计在第 2 拍砸下来
       if (tot >= 0) stab(t, [step(0), step(2), step(4)], 0.08); else { stab(t, [up(ladder[0], 0), up(ladder[1], 0)], 0.07); events.push({type: 'boom', t: r3(t), gain: 0.3, freq: 45, dur: 0.8}); }
     }
   } else if (['bars', 'steps', 'cycle', 'cards', 'timeline', 'ring'].includes(ty)) {
     const n = ty === 'ring' ? list.length + 1 : list.length;
     for (let i = 0; i < n; i++) {   // 一条一条出来：音阶一级一级往上爬
-      const t = ty === 'timeline' && span <= 1 ? t0 + i * Math.min(BEAT, BAR * 0.9 / Math.max(n, 1)) : t0 + itemAt(span, i, n) + 0.05;
-      note(t + 0.06, step(i), i === n - 1 ? 0.1 : 0.08);   // 条目淡入 0.3 秒，比起点晚一点最贴画面（11-18 逐帧量过）
+      const t = ty === 'timeline' && span <= 1 ? t0 + i * Math.min(BEAT, BAR * 0.9 / Math.max(n, 1)) : t0 + itemAt(span, i, n);
+      note(t, step(i), i === n - 1 ? 0.1 : 0.08);   // 条目在拍上出现，音也在拍上
+      if (span > 1 && ty !== 'timeline' && ty !== 'ring') events.push({type: 'tick', t: r3(t + BEAT), freq: 3400, gain: 0.05});   // 第 2 拍它的数 / 标签落下：一声轻响
     }
     if (ty === 'timeline' && d.breakAt != null) { const t = t0 + Number(d.breakStep ?? 1) * BAR; events.push({type: 'scratch', t: r3(t), dur: 0.35, gain: 0.25}); events.push({type: 'boom', t: r3(t), gain: 0.35, freq: 42, dur: 0.9}); }
   } else if (ty === 'compare') {
     const tr = span > 1 ? BAR : BEAT * 2;
-    note(t0 + 0.05, step(0)); note(t0 + tr + 0.3, step(4), 0.1);
-    if (d.badge) stab(t0 + (span >= 3 ? 2 * BAR : tr + 0.6), [step(2), step(4), step(6)], 0.06);
+    note(t0, step(0)); if (span > 1) note(t0 + BEAT, step(1), 0.07); note(t0 + tr, step(3), 0.08); note(t0 + tr + (span > 1 ? BEAT : 0.15), step(4), 0.1);
+    if (d.badge) stab(t0 + (span >= 3 ? 2 * BAR : span > 1 ? tr + 2 * BEAT : tr + BEAT), [step(2), step(4), step(6)], 0.06);
   } else if (ty === 'object') {
-    const c = Math.min(8, Number(d.count) || 1);
-    for (let i = 0; i < c; i++) note(t0 + 0.1 + i * Math.min(0.12, BAR * 0.6 / c), step(i), 0.06, 'pluck');
+    if (d.count) for (let b = 0; b < 4; b++) note(t0 + b * BEAT, step(b), 0.06, 'pluck');   // 一片东西分四批冒出来，一拍一批
+    else { note(t0, step(0)); note(t0 + BEAT, step(2), 0.06); }
   } else if (ty === 'flow') {
-    note(t0 + 0.05, step(0)); events.push({type: 'whoosh', t: r3(t0 + (span > 1 ? BAR : BEAT * 2)), dur: 0.7, gain: 0.14}); note(t0 + (span > 1 ? BAR : BEAT * 2) + 0.7, step(4), 0.1);
+    const tr = span > 1 ? BAR : BEAT; note(t0, step(0)); events.push({type: 'whoosh', t: r3(t0 + tr), dur: Math.min(1, 2 * BEAT), gain: 0.14}); note(t0 + tr + 2 * BEAT, step(4), 0.1);   // 出发、到达都在拍上
   } else if (ty === 'statement' || ty === 'title') {
-    stab(t0 + 0.02, [step(0), step(2), step(4)], 0.06);
+    stab(t0, [step(0), step(2), step(4)], 0.06);
   }
 }
 // 提问的句子（为什么 / 怎么 / 什么 / 吗 / 呢）：句首一个上滑音，像在问
