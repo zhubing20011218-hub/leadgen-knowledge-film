@@ -106,7 +106,7 @@ if "--quick" not in sys.argv:
         except json.JSONDecodeError: qa = None
         report("frame_qa 0 处", qa == [], (r.stdout or r.stderr)[-300:])
 
-print("== 7 卡点：画面变化和音效都落在鼓点上（教程第 02 / 03 条，calmness 11-18 确认）")
+print("== 7 卡点：画面变化和音效都落在鼓点上（教程第 02 / 03 条，作者 11-18 确认）")
 f = copy.deepcopy(film); bpm = f.get("bpm", 112.8); beat = 60 / bpm
 with tempfile.TemporaryDirectory() as d:
     (Path(d) / "f.json").write_text(json.dumps(f, ensure_ascii=False), encoding="utf-8")

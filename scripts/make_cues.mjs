@@ -114,7 +114,7 @@ for (const s of SHOTS) {
   events.push({type: 'knock', t: r3(t), freq: 180, gain: 0.55});
   events.push({type: 'boom', t: r3(t), gain: 0.3, freq: 55, dur: 0.6});
 }
-// ---------- 画面动作 → 音乐（11-18 calmness："配乐要跟着画面的代码走"；上游引擎 audio.py 也是按画面事件表配乐）----------
+// ---------- 画面动作 → 音乐（11-18 作者："配乐要跟着画面的代码走"；上游引擎 audio.py 也是按画面事件表配乐）----------
 // 时刻和 template/scenes.js 用同一套算法：第 i 个东西（共 n 个）在一镜里什么时候出来。音高取这一章和弦里的音，所以是旋律不是音效。
 // 用自己的歌 / 平台曲库的歌时（--sfx-only）只留不带音高的（闷击、碎裂、低音），免得和歌的调打架。
 const lineText = []; chapters.forEach((c) => (c.lines || []).forEach((ln) => lineText.push(String(ln.text || ''))));
