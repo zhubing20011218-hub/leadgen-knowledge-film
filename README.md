@@ -27,6 +27,10 @@ AI 不写画面代码，只写一份 `film.json`：字幕，加上每一镜用�
 4. **配乐**：默认按片子结构自动作曲（律动 / 紧张 / 温暖 / 轻松四种风格，没有版权问题）；有能商用的歌就用 `fit_song.py` 量节拍、挑段落、把片子卡到歌的重拍上（给一个文件夹就逐首分析、挑最合适的）；想用平台热歌，出片时会多出一版只有卡点音效的，在 App 里加歌。
 5. **出片**：`bash scripts/build.sh <工程>` 依次做检查、配乐、渲染画面、混音到 −14 LUFS，并在文件里写入 AI 生成标记，最后出一张自查拼图。
 
+## 出片时一起出的东西
+
+`renders/` 里：成片 mp4、封面.jpg（片名大字 + 开场画面）、配平台音乐用.mp4（只有卡点音效，在 App 里加热歌用）、发布说明.txt（发布标题、话题、要打开的声明、配乐怎么换）。
+
 ## 安装
 
 主要适配 **DeepSeek Harness**，Claude Code、Codex 等支持 skill 的助手也能用：
@@ -40,7 +44,7 @@ git clone https://github.com/zhubing20011218-hub/leadgen-knowledge-film ~/.claud
 bash ~/.dsh/skills/leadgen-knowledge-film/scripts/setup.sh      # 建 .venv、装 playwright + pillow、下载开源字体（约 40MB）
 ```
 
-还需要 node 和 ffmpeg。然后在助手里说"做一条引流的知识短片"，它会先问你需求；
+还需要 node 和 ffmpeg。装好后可以跑 `python3 scripts/selftest.py` 自测（不联网、不花钱，约 15 秒）。然后在助手里说"做一条引流的知识短片"，它会先问你需求；
 助手能看图（DeepSeek Harness 的 `read_image`、Claude 的 `Read`）就自己看拼图改，不额外花钱。
 
 ## 不开助手，直接用 DeepSeek 接口全自动

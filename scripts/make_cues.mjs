@@ -92,7 +92,7 @@ CH.forEach((c, i) => {
 // 盖章：和 template/film.js 同一个时刻——最后一句；那句还要出最后一条时，第三拍再砸
 for (const s of SHOTS) {
   const st = typeof s.d.stamp === 'string' ? {text: s.d.stamp} : s.d.stamp;
-  if (!st || !st.text || s.d.type === 'title') continue;
+  if (!st || !st.text || s.d.type === 'title' || s.d.type === 'statement') continue;
   const k = Math.min(Math.max(st.at == null ? s.span - 1 : Number(st.at), 0), s.span - 1);
   const items = (s.d.values || s.d.rows || s.d.nodes || s.d.items || s.d.paths || []).length;
   const t = at(s.first + k) + (s.span === 1 || items > k ? 2 * BEAT : 0);

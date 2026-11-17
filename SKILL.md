@@ -35,8 +35,11 @@ bash scripts/setup.sh             # 缺东西就跑一次：建 .venv、装 play
 `ds_make.py` 的账（实测，空闲时段）：30 秒一条约 ¥0.03–0.05，60 秒约 ¥0.05–0.08；高峰时段（工作日 9–12、14–18 点）翻倍。
 默认用 `deepseek-flash`；同样的错连续两轮改不掉，才自动换 `deepseek-v4-pro` 改一轮。每条片默认上限 ¥0.5（`--budget`），账记在 `<工程>/review/cost.json`。
 
-**弱模型最容易错的四件事，检查脚本都会拦**：句数数不清（会告诉你各章几句、差几句）、编 brief 里没有的数字（会指出是哪个字段）、
-一句一换画面（画面数超过句数一半）、说了数的句子画面却不动、照着评审意见加"扣1 领资料"这类诱导话术。报错写到哪个字段，就改哪个字段。
+**弱模型最容易错的这些事，检查脚本都会拦**，报错里写着最小改法，照着改那一处：句数数不清（点名从哪几章删 / 加）、
+编 brief 里没有的数字或经历（「凑巧算得出」的数要写明按什么算）、一句一换画面、说了数的句子画面上却没有、
+把死路当成岔路的答案、横条乱填数、照着评审意见加"扣1 领资料"这类诱导话术。
+
+**改了技能本身**（画面件、检查、配乐、流程）先跑 `python3 scripts/selftest.py`：不联网不花钱，15 秒，17 项全过才算没改坏。
 
 ## 0. 先问需求（没拿到答案不开工）
 
@@ -44,6 +47,7 @@ bash scripts/setup.sh             # 缺东西就跑一次：建 .venv、装 play
 
 1. 给谁看　2. 他现在的处境，三句具体的话（**必须问**）　3. 你手上的真实证据和数字
 4. 看完让他做什么（主页合集 / 评论区）　5. 30 / 60 / 90 秒　6. 不能出现的说法　7. 最后把人引到哪个方向（默认跨境电商）
+（可选）配乐：交给技能合成 / 他有能商用的歌 / 发布时在 App 里自己选（references/04）
 
 用户只给了一个题目、说"直接做"：除了第 2 条，其余用默认值顶上，交片时说清哪几条是默认的。
 **不要问"你想要什么风格"**——风格由技能给，用户只需要回答事实。
@@ -54,7 +58,7 @@ bash scripts/setup.sh             # 缺东西就跑一次：建 .venv、装 play
 ## 1. 定结构（`references/02-引流叙事骨架.md`）
 
 推荐骨架（30 秒 14 句）：① 开场钩子 + 处境（钩子见 references/02，别每条都用人生时间轴）→ ② 断裂 + 片名 → ③ 分叉 → ④ 收窄 → ⑤ 出路（+ AI）→ ⑥ 行动。
-四种角度：A 被裁之后 / B 转行盘点 / C 电商 + AI / D 我的弯路，一条片只讲一个角度。
+四种角度：A 被裁之后 / B 转行盘点 / C 电商 + AI / D 我的弯路，一条片只讲一个角度；**每种角度的六拍说法不一样**（references/02 的角度表），别把「被裁」那套套到别的角度上。
 用户想讲的不适合这个骨架（比如观点片"为什么出海是电商的终点"），就商量一个结构，`angle` 写 `custom`。
 
 **给用户看一次**：一句话论点 + 每章一句话。他点头再写 film.json。
@@ -86,7 +90,7 @@ bash scripts/build.sh ~/Desktop/知识短片/<片名>                   # 检查
 拼图截的是每句播到一半的那一帧（`scripts/sheet_times.py`），不会截在换句的瞬间。
 配乐三种（`references/04-配乐与卡点.md`）：默认 `make_cues.mjs` 按片子结构自动作曲（律动 / 紧张 / 温暖 / 轻松，brief 的 `music.style`），没有版权问题；
 用户有能商用的歌：`python3 scripts/fit_song.py <工程> <歌或文件夹> --licensed` 量节拍、挑段落（给文件夹就逐首排名选歌）；
-想用平台热歌：每次出片都多出 `<片名>-配平台音乐用.mp4`（只有卡点音效）和 `配乐说明.txt`，让用户在 App 里加歌——**热歌不合进文件**。
+想用平台热歌：每次出片都多出 `<片名>-配平台音乐用.mp4`（只有卡点音效）和 `发布说明.txt`，让用户在 App 里加歌——**热歌不合进文件**。
 成片在 `<工程>/renders/<片名>.mp4`，−14 LUFS，文件里写入不可见的 AI 生成标记。
 
 第一次用跑 `bash scripts/setup.sh`（建技能自己的 `.venv`、装依赖、下字体约 40MB；没有 Chrome 会下 Chromium）。还要 node 和 ffmpeg。
@@ -98,8 +102,9 @@ bash scripts/build.sh ~/Desktop/知识短片/<片名>                   # 检查
 
 ## 5. 交付
 
-`成片 mp4 + 标题和 3–5 个话题 + 事实表（每个数字的出处）+ 这条片引流到哪`，
-提醒用户发布时打开平台的"AI 生成内容"声明；example 片要说明"数字是示例，不能发布"。
+`build.sh` 出片时一起出：`renders/<片名>.mp4`、`封面.jpg`（片名大字 + 开场画面）、`<片名>-配平台音乐用.mp4`、`发布说明.txt`（发布标题、话题、封面怎么用、要打开的声明、配乐怎么换）。
+发布标题和话题是 film.json 的 `post`（写片时一起写，检查同样拦联系方式、收入承诺、编数字）。
+交给用户：上面这几个文件 + 事实表（每个数字的出处）+ 这条片引流到哪；example 片要说明"数字是示例，不能发布"。
 
 ## 红线（`references/06-合规红线.md`）
 
@@ -123,6 +128,6 @@ references/05-检查表.md           机器检查 + 人看三条 + 交付清单
 references/06-合规红线.md         平台和法律边界、可替换的说法
 template/                        画面模板：film.js（播放器）scenes.js（15 个件）icons.js（28 个图标）palette.js（章节色）
 engine/                          渲染引擎（MIT，来源见 LICENSE-THIRD-PARTY.md）；字体下载到 engine/fonts/
-scripts/                         env_check.py / setup.sh / new_film.sh / build.sh / ds_make.py（DeepSeek 全自动）/ check_film.py / validate_brief.py / sheet_times.py / make_cues.mjs（作曲）/ score.mjs（合成器）/ fit_song.py（用自己的歌、选歌）/ music_note.py（配乐说明）
+scripts/                         env_check.py / setup.sh / new_film.sh / build.sh / ds_make.py（DeepSeek 全自动）/ check_film.py / validate_brief.py / sheet_times.py / make_cues.mjs（作曲）/ score.mjs（合成器）/ fit_song.py（用自己的歌、选歌）/ publish_note.py（发布说明）/ cover.py（封面）/ frame_qa.py（画面体检）/ selftest.py（自测）
 examples/01-被裁之后/             示例：brief.json（数字是示例）+ film.json
 ```

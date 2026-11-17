@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 一条命令出片：检查 → 配乐 → 渲画面 → 混音（-14 LUFS）→ 写入 AI 生成标记 → 拼图自查
+# 一条命令出片：检查 → 配乐 → 渲画面 → 混音（-14 LUFS）→ 写入 AI 生成标记 → 封面 + 发布说明 → 拼图自查
 #   bash scripts/build.sh <工程目录> [--sheet-only 只出拼图 | --remix 只重新配乐混音、不重渲画面 | --update-template 先换成最新模板]
 # 需要：python3（装了 playwright 和 pillow）、node、ffmpeg、本机 Chrome。缺什么会直接告诉你。
 set -euo pipefail
@@ -51,30 +51,36 @@ if [ "$REMIX" = 1 ] && [ -f "$P/renders/raw.mp4" ]; then echo "沿用 renders/ra
 echo "== 4/5 混音到 -14 LUFS、真峰 ≤ -1 dBTP，写入 AI 生成标记"
 [ "$REMIX" = 1 ] && echo "（只重新混音，不重渲画面）"
 # 合成鼓点峰值很尖：先压峰值，再提到 -14 LUFS，最后留 1 dB 给 AAC 编码的过冲（11-15 实测：只做 loudnorm 真峰会到 0 dB）
-MIX="alimiter=limit=0.4:level=false:attack=1:release=60,loudnorm=I=-14:TP=-2:LRA=11,alimiter=limit=0.79:level=false:attack=1:release=60,aresample=48000"
-[ -n "$SONG" ] && MIX="loudnorm=I=-14:TP=-3:LRA=11,alimiter=limit=0.68:level=false:attack=1:release=60,aresample=48000"   # 成品歌已经混过音，不再先压一道；歌比合成配乐密，AAC 编码后峰值冲得更高，多留 1 dB   # 成品歌已经混过音，不再先压一道
+# 修正音量放在最后一道限幅器前面（11-18：放在后面时，为了守住真峰只能整体往下压，成片只有 -15.3 LUFS）
+PRE="alimiter=limit=0.4:level=false:attack=1:release=60,loudnorm=I=-14:TP=-2:LRA=11"; LIM="alimiter=limit=0.79:level=false:attack=1:release=60,aresample=48000"
+[ -n "$SONG" ] && PRE="loudnorm=I=-14:TP=-3:LRA=11" && LIM="alimiter=limit=0.68:level=false:attack=1:release=60,aresample=48000"   # 成品歌已经混过音，不再先压一道；歌比合成配乐密，AAC 编码后峰值冲得更高，多留 1 dB
 NAME="$($PY -c "import json,sys; print(json.load(open(sys.argv[1],encoding='utf-8')).get('title') or 'film')" "$P/film.json")"
 OUT="$P/renders/${NAME}.mp4"
 mux() {   # $1 = 额外的音量修正（dB）
   ffmpeg -v error -y -i "$P/renders/raw.mp4" -i "$P/public/score.wav" \
-    -af "$MIX,volume=${1}dB" -c:v copy -c:a aac -b:a 192k -shortest \
+    -af "$PRE,volume=${1}dB,$LIM" -c:v copy -c:a aac -b:a 192k -shortest \
     -metadata comment="AIGC: 本视频由 AI 辅助生成" -metadata description="AI-generated content" -movflags +faststart "$OUT"
 }
 measure() { ffmpeg -hide_banner -i "$OUT" -af ebur128=peak=true -f null - 2>&1 | python3 -c "import sys,re; s=sys.stdin.read(); i=re.findall(r'I:\s+(-?[\d.]+) LUFS', s)[-1]; p=re.findall(r'Peak:\s+(-?[\d.]+) dBFS', s)[-1]; print(i, p)"; }
-# 第一遍混完实测，再按差多少修正一次：响度对到 -14 LUFS，真峰不超过 -1.2 dBFS（AAC 编码会让峰值冲高一点，所以留余量）
+# 第一遍混完实测，按差多少补一次响度（音量在最后一道限幅器前面，峰值由限幅器管）；真峰还超 -1.2 dBFS 就把限幅器的天花板压低，
+# 不压整体音量（11-18：原来按峰值整体往下压，成片只有 -15.3 LUFS）。AAC 编码会让峰值冲高一点，所以真峰留余量
 mux 0; read I PK < <(measure)
-G=$(python3 -c "print(round(min(-14 - $I, -1.2 - $PK), 2))")
-mux "$G"; read I PK < <(measure)
-if python3 -c "import sys; sys.exit(0 if $PK > -1.2 else 1)"; then   # 真峰还超：再往下压一点，宁可响度低一点点
-  G=$(python3 -c "print(round($G + (-1.3 - $PK), 2))"); mux "$G"; read I PK < <(measure)
-fi
+G=$(python3 -c "print(round(-14 - $I, 2))")
+for _ in 1 2 3; do
+  mux "$G"; read I PK < <(measure)
+  python3 -c "import sys; sys.exit(0 if $PK > -1.2 else 1)" || break
+  LIM=$(python3 -c "import re; s='$LIM'; v=float(re.search(r'limit=([\d.]+)', s).group(1)); print(re.sub(r'limit=[\d.]+', 'limit=%.3f' % (v * 10 ** (-($PK + 1.3) / 20)), s, 1))")
+done
 echo "    响度 $I LUFS · 真峰 $PK dBFS（修正 ${G} dB）"
 # 「配平台音乐用」：只有卡点音效、没有音乐。想用抖音 / 剪映曲库里的热歌（有平台授权，合进文件里发会被判版权），用这一版在 App 里加歌
 PLAT="$P/renders/${NAME}-配平台音乐用.mp4"
 ffmpeg -v error -y -i "$P/renders/raw.mp4" -i "$P/public/sfx.wav" -af "loudnorm=I=-18:TP=-2,aresample=48000" -c:v copy -c:a aac -b:a 160k -shortest \
   -metadata comment="AIGC: 本视频由 AI 辅助生成" -metadata description="AI-generated content" -movflags +faststart "$PLAT"
-python3 "$SKILL/scripts/music_note.py" "$P" > "$P/renders/配乐说明.txt"
-echo "    另出了一版只有卡点音效的：$PLAT（配乐说明：$P/renders/配乐说明.txt）"
+$PY -W ignore "$SKILL/scripts/cover.py" "$P" >/dev/null && echo "    封面：$P/renders/封面.jpg"
+python3 "$SKILL/scripts/publish_note.py" "$P" > "$P/renders/发布说明.txt"
+rm -f "$P/renders/配乐说明.txt"   # 旧版本出的，内容已经并进发布说明
+echo "    另出了一版只有卡点音效的：$PLAT"
+echo "    发布标题、话题、封面、配乐怎么换：$P/renders/发布说明.txt"
 
 echo "== 5/5 拼图自查 → $P/review/sheet.jpg"
 $PY "$SKILL/engine/render.py" "$P" --sheet $TIMES

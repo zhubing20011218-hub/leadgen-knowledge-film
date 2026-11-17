@@ -57,7 +57,8 @@ class Ledger:
         if self.total >= self.budget: sys.exit(f"已花 ¥{self.total:.3f}，到了预算 ¥{self.budget}，停下（加大 --budget 再跑）")
 
 
-def chat(key, base, model, messages, ledger, step, json_mode=True, max_tokens=6000):
+def chat(key, base, model, messages, ledger, step, json_mode=True, max_tokens=6000, soft=False):
+    """soft=True：失败时返回 None，不退出（看图评审这种可选的步骤用）"""
     ledger.guard()
     body = {"model": model, "messages": messages, "temperature": 0.4, "max_tokens": max_tokens, "thinking": {"type": "disabled"}, "stream": False}
     if json_mode: body["response_format"] = {"type": "json_object"}
@@ -67,13 +68,19 @@ def chat(key, base, model, messages, ledger, step, json_mode=True, max_tokens=60
             d = json.loads(urllib.request.urlopen(req, timeout=240).read().decode())
             ledger.add(step, model, d.get("usage", {}))
             txt = d["choices"][0]["message"]["content"]
+            if json_mode and d["choices"][0].get("finish_reason") == "length":   # 写到上限被截断：原样重发还会截在同一处（11-18 白花 ¥0.03），上限翻倍再来
+                body["max_tokens"] = min(16000, body["max_tokens"] * 2); print(f"   （回答太长被截断，上限加到 {body['max_tokens']} 再来）"); continue
             return json.loads(txt) if json_mode else txt
         except urllib.error.HTTPError as e:
             msg = e.read().decode(errors="ignore")[:300]
             if e.code in (401, 402, 403): sys.exit(f"DeepSeek 拒绝（{e.code}）：钥匙不对或余额不足。{msg}")
-            if attempt == 3 or e.code not in (429, 500, 502, 503, 504): sys.exit(f"DeepSeek 出错（{e.code}）：{msg}")
+            if attempt == 3 or e.code not in (429, 500, 502, 503, 504):
+                if soft: print(f"   DeepSeek 出错（{e.code}），跳过这一步"); return None
+                sys.exit(f"DeepSeek 出错（{e.code}）：{msg}")
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
-            if attempt == 3: sys.exit(f"DeepSeek 没回好：{e}")
+            if attempt == 3:
+                if soft: print(f"   DeepSeek 没回好（{e}），跳过这一步"); return None
+                sys.exit(f"DeepSeek 没回好：{e}")
         time.sleep(2 * (attempt + 1))
 
 
@@ -118,11 +125,18 @@ REVIEW_SYS = """你是竖屏知识短片的严格评审。给你一张拼图：�
   不许建议开新镜、拆镜、换成别的件（一个画面撑好几句是这种片子的做法，全片画面数有上限）；同一镜实在演不了，就建议改这句的说法；
   "加个图标更好认"这类锦上添花的不报，只报对不上、看不出、看不清的；
 - engine：画面件自己画坏了（越界、重叠这类排版 bug），改 film.json 解决不了。
-只输出 JSON：{"issues":[{"line":句号(从1数),"kind":"content|engine","problem":"…","fix":"…"}],"verdict":"一句话总评"}。没问题就给空数组。"""
+最多报 12 条，挑最影响观感的报；只输出 JSON：{"issues":[{"line":句号(从1数),"kind":"content|engine","problem":"…","fix":"…"}],"verdict":"一句话总评"}。没问题就给空数组。"""
 
 
 MOOD_BPM = {"steady": 112, "tight": 128, "calm": 100}
 BEATS = [("① 开场钩子 + 处境", 0.18), ("② 断裂 + 片名", 0.12), ("③ 分叉", 0.2), ("④ 收窄 / 证据", 0.22), ("⑤ 出路", 0.16), ("⑥ 行动", 0.12)]
+# 每种角度的六拍说法不一样（references/02 的角度表）。11-18 实测：只给「被裁」那套说法时，转行盘点也写出了「被裁之后」
+ANGLE_BEATS = {
+    "laid-off": ["① 开场钩子 + 处境", "② 断裂 + 片名", "③ 分叉：几条路摆出来", "④ 收窄：用数字讲门槛", "⑤ 出路", "⑥ 行动"],
+    "pivot-list": ["① 开场钩子 + 处境", "② 为什么想换", "③ 摊开几条路", "④ 每条路的门槛", "⑤ 门槛最低的那条", "⑥ 行动"],
+    "ai-ecommerce": ["① 开场钩子", "② 以前一个人做不了的事", "③ AI 接过去了哪些活", "④ 证据：自己用 AI 干的活", "⑤ 出路", "⑥ 行动"],
+    "own-mistake": ["① 开场钩子：亏了多少", "② 我是怎么做的", "③ 亏在哪几处", "④ 改法 / 正确的算法", "⑤ 改完的结果", "⑥ 行动"],
+}
 
 
 def pic_max(n): return (n + 1) // 2      # 和 check_film.py 同一套：一个画面至少撑 2 句
@@ -175,11 +189,14 @@ def plan_lines(brief):
               "相邻两章换不同的件；steps / checklist 只是一行行字，全片最多用 2 次（片尾「下一步」用 steps 正合适）——有数就用 number / bars / ring，一笔笔算账用 ledger（合计程序自动算），几条路用 fork（全是死路写 pick: -1，pick 不能是死路），几样东西用 cards / object，从 A 到 B 用 flow，同一件事两种情况用 compare。"
               f"全片 {n} 句最多 {pic_max(n)} 个画面；最多 {pause_max(n)} 句可以画面不动（只给提问、结论，而且不许说数字）；"
               "一章最后那句是结论或情绪落点（白干、没回音、做成了）时，给这一镜加 stamp 盖一个 2–5 字的章，这句就有画面了。")
-    ends = (f"开场用「{hook}」：{how}，第一镜用 {first}；不要用「大家好」「你知道吗」。"
+    ends = ("只写 brief 里有的经历和数：brief 没说被裁就不写被裁，references 里的例句（被裁、厂子搬去越南、房贷孩子）只是写法示范，不许搬过来。"
+            f"开场用「{hook}」：{how}，第一镜用 {first}；不要用「大家好」「你知道吗」。"
+            "film.json 顶层最后写 post：{\"title\": 发布标题（≤ 30 字，一句让人想点开的话，可以是问句，只用 brief 里有的事和数）, \"tags\": 3–5 个话题（不带 #，比如 跨境电商、副业、转行）, \"cover\": 封面第二行小字（≤ 10 字，可不写）}。"
             "倒数第二句回扣第一句：用回第一句里的那个词或那个画面，但意思变了（比如开头问一个选择，结尾给出答案；开头是一张床，结尾还是那张床、但人已经起来了）。用你自己的话写，不要照抄这里和 references 里的例句；最后一句落到 cta。")
     if brief.get("angle") == "custom":
         return bpm, n, f"bpm 写 {bpm}。这条片必须正好 {n} 句字幕（写完数一遍），按商量好的结构走。{method}{ends}"
-    lines = "；".join(f"{b} {c} 句" for (b, _), c in zip(BEATS, cnt))
+    names = ANGLE_BEATS.get(brief.get("angle"), [b for b, _ in BEATS])
+    lines = "；".join(f"{b} {c} 句" for b, c in zip(names, cnt))
     return bpm, n, f"bpm 写 {bpm}。这条片必须正好 {n} 句字幕（写完数一遍）。情绪顺序按六拍走：{lines}——拍不是章，相邻两拍可以放进同一章、同一个画面。{method}{ends}"
 
 
@@ -283,7 +300,7 @@ def main():
         img = base64.b64encode((proj / "review/sheet.jpg").read_bytes()).decode()
         rv = chat(key, base, VISION, [{"role": "system", "content": REVIEW_SYS},
                                       {"role": "user", "content": [{"type": "text", "text": "字幕表：\n" + line_table(film)},
-                                                                   {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + img}}]}], led, "看图评审", max_tokens=2000)
+                                                                   {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + img}}]}], led, "看图评审", max_tokens=3000, soft=True) or {"issues": [], "verdict": "（评审没回好，跳过；画面体检照常）"}
         issues = rv.get("issues") or []
         (proj / "review/review.json").write_text(json.dumps(rv, ensure_ascii=False, indent=1), encoding="utf-8")
         content = [i for i in issues if i.get("kind") == "content"] + [{"line": q["line"], "kind": "content", "problem": q["problem"], "fix": "照上面说的改"} for q in qa]

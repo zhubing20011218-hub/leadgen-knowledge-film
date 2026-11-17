@@ -164,11 +164,29 @@ function start(F) {
     fr.text(s, X0 + 28, NOTE_Y, { font: 'sansr', size: 23, track: 1, color: INK.dim, align: 'l', a: 0.85 * k });
   }
 
+  /* 封面（scripts/cover.py 设 window.COVER = true 再截一帧）：上面是片名大字，下面是开场那一章演完的画面，不放字幕和顶栏。
+   * t 传开场章最后一句播到 85% 的时刻，画面里的东西都出齐了 */
+  function cover(fr, t) {
+    const L = lineAt(t), S = L.shot, C = L.ch, col = C.col;
+    const step = Math.min(S.span - 1, Math.max(0, Math.floor((t - S.t0) / BAR)));
+    const ctx = { t, lt: t - S.t0, st: t - (S.t0 + step * BAR), step, span: S.span, bar: BAR, beat: BEAT, col, alt: C.alt, d: S.d, k: 1, final: false, X0 };
+    fr.g({ at: [W / 2, 1200], s: 0.84 }, () => fr.g({ at: [-W / 2, -H / 2] }, () => { (SCENES[S.d.type] || SCENES.statement)(fr, ctx); if (S.d.type !== 'title' && S.d.type !== 'statement') stamp(fr, t, S, col); }));
+    const title = String(F.title || ''), sub = String(F.post && F.post.cover || C.key || '');
+    // 片名超过 6 个字就拆两行（从空格拆，没有空格从中间），每行尽量大：封面在信息流里只有手指那么宽
+    const sp = title.indexOf(' '), parts = title.length > 6 ? (sp > 0 ? [title.slice(0, sp), title.slice(sp + 1)] : [title.slice(0, Math.ceil(title.length / 2)), title.slice(Math.ceil(title.length / 2))]) : [title];
+    let size = 220; while (size > 90 && parts.some(x => fr.measure(x, { font: 'sansh', size, track: 4 }) > W - 2 * X0)) size -= 8;
+    parts.forEach((x, i) => fr.text(x, X0, 300 + i * size * 1.08, { font: 'sansh', size, track: 4, align: 'l', grad: [[0, '#FFFFFF'], [1, mix('#FFFFFF', col, 0.5)]], glow: 40, glowColor: col, glowA: 0.55 }));
+    const by = 300 + (parts.length - 1) * size * 1.08 + size * 0.62 + 40;
+    fr.rect(X0, by, 120, 8, { fill: col, glow: 18 });
+    if (sub && !title.includes(sub)) fr.text(sub, X0 + 150, by + 4, { font: 'sansh', size: 64, track: 3, color: INK.white, align: 'l' });
+  }
+
   VK.film({
     dur: END, theme: 'flat', bloom: 0.55, grain: 0.03,
     meta: { title: F.title, bpm: BPM, bar: BAR, phase: PHASE, lines: N },
     draw(fr, t) {
       fr.look.bg = 'flat'; fr.look.bgo = { color: INK.base }; fr.look.under = under;
+      if (window.COVER) return cover(fr, t);
       const L = lineAt(t), S = L.shot, { col, alt } = colorsAt(t);
 
       /* 当前镜：小节线上进场；下一镜不同就在最后 0.16 秒退场 */
@@ -176,7 +194,7 @@ function start(F) {
       const step = Math.min(S.span - 1, Math.max(0, Math.floor((t - S.t0) / BAR)));
       const ctx = { t, lt: t - S.t0, st: t - (S.t0 + step * BAR), step, span: S.span, bar: BAR, beat: BEAT, col, alt, d: S.d, k: inK * outK, final: S.ch.i === CHAPS.length - 1 && !S.next, X0 };
       const fn = SCENES[S.d.type] || SCENES.statement;
-      if (t >= S.t0 - 0.001) fr.g({ a: ctx.k }, () => { fn(fr, ctx); if (S.d.type !== 'title') stamp(fr, t, S, col); });
+      if (t >= S.t0 - 0.001) fr.g({ a: ctx.k }, () => { fn(fr, ctx); if (S.d.type !== 'title' && S.d.type !== 'statement') stamp(fr, t, S, col); });   // 大字卡本身就是结论，不再盖章
 
       /* 换章时一下很淡的章节色闪光 */
       if (L.ch.first === L.i && L.i > 0) fr.flash(0.10 * (1 - seg(t, L.t0, L.t0 + 0.25)) * (t >= L.t0 ? 1 : 0), col);

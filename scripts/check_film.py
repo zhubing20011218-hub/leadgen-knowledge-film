@@ -13,7 +13,7 @@ TYPES = {   # 件名: (必填字段, {列表字段: (最少, 最多)})
     "ledger": (["rows"], {"rows": (2, 5)}),
     "ring": (["value"], {"rows": (0, 5)}),
     "timeline": (["nodes"], {"nodes": (2, 5)}),
-    "fork": (["paths"], {"paths": (2, 4)}),
+    "fork": (["paths"], {"paths": (2, 5)}),
     "compare": (["left", "right"], {}),
     "checklist": (["rows"], {"rows": (1, 6)}),
     "steps": (["rows"], {"rows": (1, 5)}),
@@ -78,7 +78,7 @@ def loose_nums(text):   # 宽一点：单个汉字数（三次、两条）也算
 
 def derive(nums):
     """brief 里的数做一两步加减乘除能得到的数（利润 = 售价 − 进价 − 运费、差几倍……），算出来的不算编。"""
-    ns = sorted(n for n in nums if n > 0)[:20]; out = {}
+    ns = sorted(n for n in nums if n >= 3)[:20]; out = {}   # 1、2 这种小数太容易凑出任何数（11-18：7 = 8 − 1、5 = 8 − 3 就这么混过去了）
     g = lambda v: round(v, 2)
     for a in ns:
         for b in ns:
@@ -87,9 +87,7 @@ def derive(nums):
                 if v > 0: out.setdefault(g(v), f)
             for c in ns:
                 if c not in (a, b) and a - b - c > 0: out.setdefault(g(a - b - c), f"{a:g}−{b:g}−{c:g}")
-    for a in ns:
-        out.setdefault(g(a * 12), f"{a:g}×12"); out.setdefault(g(a / 100), f"{a:g}%")
-    return out
+    return out   # 去掉了「任何数 ×12、÷100」：20 = 2000 ÷ 100 这种巧合会把编出来的数放过去
 
 
 # 每种件最多能"变"几次：一镜的句子比这多，多出来的句子画面不动
@@ -98,8 +96,8 @@ def capacity(d):
     return {"title": 1, "statement": 1, "number": max(1, L("values")), "bars": L("rows"), "ledger": L("rows") + (1 if d.get("total") else 0), "ring": 1 + L("rows"),
             "timeline": max(L("nodes"), 2 if d.get("breakAt") is not None else 1),   # 一镜撑几句时一句亮一个节点
             "fork": 1 if d.get("focus") is not None else max(2, L("paths") + 1),   # 第一句长出路，之后一句划掉一条，最后一句点亮留下的那条
-            "compare": 2,
-            "checklist": L("rows"), "steps": L("rows"), "cycle": L("nodes"), "cards": L("items"), "object": 1, "flow": 2}.get(ty, 1) + (1 if (d.get("stamp") if isinstance(d.get("stamp"), str) else (d.get("stamp") or {}).get("text")) else 0)   # 盖章也算一步
+            "compare": 3 if d.get("badge") else 2,   # 有角标：左 → 右 → 角标
+            "checklist": L("rows"), "steps": L("rows"), "cycle": L("nodes"), "cards": L("items"), "object": 1, "flow": 2}.get(ty, 1) + (1 if ty not in ("title", "statement") and (d.get("stamp") if isinstance(d.get("stamp"), str) else (d.get("stamp") or {}).get("text")) else 0)   # 盖章也算一步（大字卡上不画章）
 
 
 def icon_fields(o, path="shot"):   # 找出所有 icon 字段
@@ -137,6 +135,16 @@ def main():
     bpm = film.get("bpm", 112); bar = 60 / bpm * 4
     chs = film.get("chapters") or []
     if not chs: err.append("没有 chapters")
+    post = film.get("post")
+    if post is not None:   # 发布文案：发布标题 + 话题（+ 封面第二行）。联系方式、收入承诺、禁用词照样查（strings 会扫到它）
+        if not isinstance(post, dict) or not str(post.get("title", "")).strip(): err.append('post 要写成 {"title": "发布标题", "tags": ["话题1", "话题2", "话题3"]}')
+        else:
+            if len(str(post["title"])) > 30: err.append(f"post.title「{post['title']}」超过 30 字：发布标题一句钩子就够")
+            tags = [str(x).lstrip("#＃ ") for x in post.get("tags") or []]
+            if not (3 <= len(tags) <= 5): err.append(f"post.tags 要 3–5 个话题（现在 {len(tags)} 个），不带 #")
+            if any(len(x) > 12 or " " in x for x in tags): err.append("post.tags 每个话题 ≤ 12 字、中间不带空格（平台会从空格断开）")
+            if post.get("cover") and len(str(post["cover"])) > 10: err.append(f"post.cover「{post['cover']}」是封面第二行小字，≤ 10 字")
+    elif brief: warn.append('没写 post（发布标题 + 3–5 个话题）：在 film.json 顶层加 "post": {"title": "…", "tags": ["…"]}')
     mu = film.get("music") or {}
     if mu.get("style") and mu["style"] not in ("drive", "tension", "warm", "lofi"): err.append(f"music.style「{mu['style']}」不认识，只能是 drive / tension / warm / lofi")
     if mu.get("song") and not Path(str(mu["song"])).expanduser().exists(): err.append(f"music.song 指向的歌不存在：{mu['song']}（重跑 scripts/fit_song.py，或删掉 music.song 改用合成配乐）")
@@ -197,6 +205,10 @@ def main():
                 t = re.sub(r"\s", "", str(ln.get("text", ""))); vs = f"{float(v):g}" if str(v).replace(".", "", 1).isdigit() else str(v)
                 if u and re.search(r"[一-鿿]", u) and vs in t and vs + u not in t:
                     err.append(f"第{s['first'] + k}句说的是「{ln.get('text')}」，画面上却是「{vs}{u}」：几个值单位不一样时 suffix 写成列表，一个值一个，比如 \"suffix\": [\"万\", \"\"]（prefix 也一样）")
+        TIMEW = r"年|月|天|前|后|今|去|现在|以前|当时|第|原来|后来|最后|开始|一开始"
+        us = [str(u) for u in (d.get("units") or [])]
+        if ty == "number" and len(us) >= 2 and len(set(us)) == len(us) and not all(re.search(TIMEW, u) for u in us):
+            warn.append(f"{tag} number 的几个值说的是不同东西（{' / '.join(us)}）：number 是「同一个数在变」，旧值会被划掉，看着像「{us[0]}」变成了「{us[1]}」。两样不同的东西用 compare（左右各一个）或 bars")
         if ty == "number" and len(d.get("values") or []) > len(s["lines"]) + 3: warn.append(f"{tag} number 的值比句子多太多，挤在一句里会看不清")
         if ty == "bars" and any(r.get("tag") and (len(str(r["tag"])) <= 2 or str(r["tag"]) in str(d.get("unit", ""))) for r in d.get("rows") or []): warn.append(f"{tag} bars 的 tag 像是单位（单位写在 unit 里，tag 写一句补充或留空）")
         dup = [str(r.get("note")) for r in (d.get("rows") or []) if isinstance(r, dict) and r.get("note") and str(r["note"]).replace(" ", "") in str(r.get("text", "")).replace(" ", "")]
@@ -210,6 +222,8 @@ def main():
             if isinstance(pk, dict) and re.search(DEAD, str(pk.get("label", "")) + str(pk.get("sub", ""))):
                 err.append(f"{tag} 最后点亮的那条「{pk.get('label')}」（{pk.get('sub', '')}）看着是死路：pick 是留下来、能走的那条。几条全是死路就写 \"pick\": -1（一条条全划掉）；能走的路在后面的章讲")
         if ty == "ledger":
+            if not isinstance(d.get("suffix", ""), str) or not isinstance(d.get("prefix", ""), str) or "%" in str(d.get("suffix", "")) or any(re.search(r"率|转化|%|百分", str(r.get("label", ""))) for r in d.get("rows") or [] if isinstance(r, dict)):
+                err.append(f"{tag} ledger 只算钱：每行同一个单位（prefix / suffix 只写一个，比如 ¥），百分比、转化率不放进来——那是另一件事，用 number 或 ring 单独演")
             for i, r in enumerate(d.get("rows") or []):
                 if not isinstance(r, dict) or not isinstance(r.get("value"), (int, float)) or r.get("op", "+") not in ("+", "-", "−"):
                     err.append(f"{tag} ledger 的 rows[{i}] 要写成 {{\"label\": \"卖价\", \"value\": 30}}（减的加 \"op\": \"-\"），value 写数字"); break
@@ -221,7 +235,7 @@ def main():
         if ty == "timeline" and d.get("breakStep") is not None and int(d["breakStep"]) >= len(s["lines"]): err.append(f"{tag} breakStep={d['breakStep']} 但这一镜只有 {len(s['lines'])} 句，裂不到")
         for pth, v in [(p, v) for p, v in icon_fields(d)]:
             if v not in ICONS: err.append(f"{tag} {pth} 的图标「{v}」没有，只能用：{' '.join(sorted(ICONS))}")
-        if ty == "object" and d.get("count") is not None and not (2 <= int(d["count"]) <= 60): err.append(f"{tag} object 的 count 要 2–60（一个就别写 count）")
+        if ty == "object" and d.get("count") is not None and int(d["count"]) < 2: err.append(f"{tag} object 的 count 至少 2（一个就别写 count）")
         span, cap = len(s["lines"]), capacity(d)
         st = d.get("stamp")
         if isinstance(st, str): st = d["stamp"] = {"text": st}   # "stamp": "白干" 也认
@@ -235,6 +249,7 @@ def main():
             elif isinstance(o, dict): yield from (x for k, v in o.items() if k not in HIDDEN | {"note", "breakAt", "breakStep", "pick", "focus", "at", "max", "pct"} for x in leaves(v))
             elif isinstance(o, list): yield from (x for v in o for x in leaves(v))
         on_screen = set().union(set(), *[numbers_in(x) for x in leaves(d)])
+        on_screen |= {float(len(d[k])) for k in ("rows", "items", "paths", "nodes", "values") if isinstance(d.get(k), list)}   # 画了 5 条路，字幕说「列了 5 条」就是画面上的数
         if ty == "ledger" and d.get("total"):   # 合计是程序算出来画上去的
             tot = sum((-1 if r.get("op") in ("-", "−") else 1) * float(r.get("value") or 0) for r in d.get("rows") or [] if isinstance(r, dict) and isinstance(r.get("value"), (int, float)))
             on_screen |= {round(tot, 2), round(abs(tot), 2)}
@@ -252,8 +267,9 @@ def main():
             if lost: warn.append(f"{tag}（{ty}）的条目「{'」「'.join(lost)}」这一镜的字幕里都没说：合镜时每句加的那条要是这句说的东西，字幕没说的删掉或换成字幕说的")
         if ty in ("steps", "checklist", "cards", "cycle", "fork"):
             k = len(d.get("rows") or d.get("items") or d.get("nodes") or d.get("paths") or [])
+            unit = "条路" if ty == "fork" else "步|件事"   # 「5 条路」只和岔路对；片尾说"前面那 5 条路"时不拿步骤件去比（11-18 误报）
             for ln in s["lines"]:
-                m = re.search(r"(?<!第)([0-9]+|[二两三四五六七八九十]) ?(步|件事|条路)", str(ln.get("text", "")))   # "一条视频"的"条"是量词，不核对；「先走一步」「第一步」是说法，不是条数
+                m = re.search(rf"(?<!第)([0-9]+|[二两三四五六七八九十]) ?({unit})", str(ln.get("text", "")))   # "一条视频"的"条"是量词，不核对；「先走一步」「第一步」是说法，不是条数
                 if m and int(cn2num(m.group(1)) if not m.group(1).isdigit() else m.group(1)) != k:
                     err.append(f"{tag} 字幕说「{m.group(0)}」，但画面只有 {k} 条：让两边对上（改字幕里的数，或补齐条目）")
         if ty == "bars" and len({str(r.get("value")) for r in d.get("rows") or []}) == 1 and len(d.get("rows") or []) > 1: err.append(f"{tag} bars 每条的值都一样，比不出大小：换成有差别的真实数，或者换件（checklist / steps）")
@@ -283,7 +299,8 @@ def main():
             where = {v: " 和 ".join(w) for v, w in where.items()}   # 一个数常常字幕和画面里都有：全列出来，只删一处会和"字幕说的数画面上要有"来回打架（11-17 实测）
             odd = sorted(v for v in where if v > 2 and v not in brief_nums and not (1900 <= v <= 2100))
             for v in [v for v in odd if v in derived]:
-                warn.append(f"{tag} 数字 {v:g} 是从 brief 算出来的（{derived[v]}），放行")
+                if brief.get("example") or "按" in note_txt: warn.append(f"{tag} 数字 {v:g} 是从 brief 算出来的（{derived[v]}），放行")
+                else: err.append(f"{tag} 数字 {v:g} 不在 brief 里，看着像 {derived[v]} 算出来的：真是这么算的，note 写「按 {derived[v]} 算」；不是就删掉这个数（凑巧算得出的数最容易混成编造）")
             odd = [v for v in odd if v not in derived]
             if odd:
                 nums = "、".join(f"{v:g}（在 {where[v]}）" for v in odd)
@@ -317,6 +334,10 @@ def main():
         for name, pat, is_err in (("联系方式或诱导互动", CONTACT, True), ("收入承诺", PROMISE, True), ("内部用语", INTERNAL, True), ("绝对化用语", ABSOLUTE, False)):
             m = re.search(pat, x)
             if m: (err if is_err else warn).append(f"屏上出现{name}「{m.group(0)}」：{x}")
+    btxt = json.dumps(brief, ensure_ascii=False)
+    for w in ("被裁", "裁员", "被优化", "失业", "厂子", "越南", "房贷", "孩子"):   # references 的例句是"被裁之后"写的，别的题目会被带偏（11-18：转行盘点写出了「被裁之后」）
+        hit = [str(ln.get("text", "")) for ln in lines if w in str(ln.get("text", ""))]
+        if brief and hit and w not in btxt: err.append(f"字幕「{hit[0]}」说到「{w}」，brief 里没有这件事：别把 references 例句里的经历搬过来，只写 brief 里有的")
     for w in brief.get("banned") or []:
         if any(w in x for x in every): err.append(f"出现了 brief 里禁止的说法「{w}」")
     n = len(lines)
@@ -339,7 +360,15 @@ def main():
                                                       and shots[i - 1]["shot"].get("type") == "fork" and shots[i - 1]["shot"].get("paths") == x["shot"].get("paths")))   # 逐条讲同一组岔路只换高亮，算一个画面
     if len(pauses) > pause_max(n):
         lst = "、".join(f"第{no}句「{ln.get('text')}」" for no, ln, _, _ in pauses)
-        err.append(f"{len(pauses)} 句画面不动（{lst}），{n} 句最多 {pause_max(n)} 句（只留给提问 / 结论）。最小改法：给那一镜加一步——rows / values / nodes 多写一条（就是这句说的东西），或者结论句加 \"stamp\": {{\"text\": \"2–5 字\"}} 盖个章")
+        HOW = {"object": "object 只演一步：换成 cards 或 checklist（一句一条，条目就是这几句说的东西）",
+               "statement": "大字卡只演一步：这几句并进前后有画面的章，或者这章换成有条目的件",
+               "title": "片名卡只演一步：后面几句另开一章，或删掉",
+               "compare": "加 badge（第三句单独出），还不够就把后面几句改成说左右两边的东西",
+               "number": "values 再加这句说的那个数（units 跟着加），或者结论句加 stamp"}
+        by = {}
+        for no, ln, tag, ty in pauses: by.setdefault((tag, ty), []).append(f"第{no}句「{ln.get('text')}」")
+        fixes = "；".join(f"{tag}（{ty}）后面 {'、'.join(x)} 不动 → {HOW.get(ty, 'rows / nodes / items 多写一条（就是这句说的东西），或者结论句加 stamp 盖个章')}" for (tag, ty), x in by.items())
+        err.append(f"{len(pauses)} 句画面不动，{n} 句最多 {pause_max(n)} 句（只留给提问 / 结论）。最小改法：{fixes}")
     elif pauses:
         warn.append("停顿句（画面不动，留给观众想一下）：" + "、".join(f"第{no}句「{ln.get('text')}」" for no, ln, _, _ in pauses) + "。只适合提问 / 结论；不是的话给那一镜加一步")
     if len(lines) >= 8 and pics > pic_max(n):

@@ -75,7 +75,7 @@ const SCENES = {
   /* 一个东西：{icon, label?, sub?, count?: 30, unit?: '份', state?: 'no'|'ok'}
    * 不写 count：一个大图标，下面名字；写了 count：一片小图标一个个冒出来，旁边数字跟着数（"投了 30 份简历"） */
   object(fr, c) {
-    const d = c.d, n = Math.min(60, Math.max(0, Number(d.count) || 0)), k = E.out3(seg(c.lt, 0, 0.4));
+    const d = c.d, total = Math.max(0, Number(d.count) || 0), n = Math.min(60, total), k = E.out3(seg(c.lt, 0, 0.4));   // 超过 60 只画 60 个，下面的数照样数到真实数量
     if (!n) {
       const fl = Math.sin(c.lt * 2.2) * 8;
       fr.glow(CX, 760, 340, c.col, 0.12 * k);
@@ -91,7 +91,7 @@ const SCENES = {
       const ki = E.out3(seg(c.lt, 0.1 + span * i / n, 0.1 + span * i / n + 0.25));
       drawIcon(fr, d.icon, x0 + (i % cols) * cell, y0 + Math.floor(i / cols) * cell, cell * 0.78, c.col, ki, i === n - 1 && seg(c.lt, 0.1 + span, 0.5 + span) > 0.5 ? d.state : null);
     }
-    const lab = String(shown) + (d.unit || '');
+    const lab = String(Math.round(total * shown / Math.max(n, 1))) + (d.unit || '');
     fr.text(lab, CX, y0 + rows * cell - cell / 2 + 130, { font: 'sansh', size: 110, color: INK.white, a: k, glow: 26, glowColor: c.col });
     if (d.label) fr.text(d.label, CX, y0 + rows * cell - cell / 2 + 230, { font: 'sansh', size: 44, color: INK.text, a: k });
   },
@@ -188,7 +188,7 @@ const SCENES = {
    * 一句记一笔（加的绿、减的红），写了 total 就再多一句：画一道线，合计按上面几笔自动算出来——合计不用模型算，也编不出来 */
   ledger(fr, c) {
     const d = c.d, rows = d.rows || [], hasT = !!d.total, n = rows.length + (hasT ? 1 : 0), cur = current(c, n);
-    const pre = d.prefix || '', suf = d.suffix || '', sign = r => (r.op === '-' || r.op === '−' ? -1 : 1);
+    const one = v => String(Array.isArray(v) ? (v[0] || '') : (v || '')), pre = one(d.prefix), suf = one(d.suffix), sign = r => (r.op === '-' || r.op === '−' ? -1 : 1);
     const total = rows.reduce((a, r) => a + sign(r) * (Number(r.value) || 0), 0), dec = decimalsOf(rows.map(r => r.value));
     const gap = rows.length <= 3 ? 165 : 140, y0 = 640 + (4 - Math.min(rows.length, 4)) * 30;   // 整组压在画面中部偏下，别全挤在上半截
     rows.forEach((r, i) => {
@@ -310,7 +310,8 @@ const SCENES = {
   compare(fr, c) {
     const d = c.d, L = d.left || {}, R = d.right || {}, y = d.badge ? 560 : 680, h = 440;   // 没有角标时整体往下放，主体别挤在上半截
     const tr = c.span > 1 ? c.bar : c.beat * 2;
-    const k1 = E.out3(seg(c.lt, 0, 0.4)), ka = E.out3(seg(c.lt, tr, tr + 0.5)), k2 = E.out3(seg(c.lt, tr + 0.25, tr + 0.7)), kb = E.out5(seg(c.lt, tr + 0.6, tr + 1.0));
+    const tb = d.badge && c.span >= 3 ? 2 * c.bar : tr + 0.6;   // 一镜三句以上：左边 → 右边 → 角标各占一句，多撑一句（11-18：角标和右边一起出，后面几句画面不动）
+    const k1 = E.out3(seg(c.lt, 0, 0.4)), ka = E.out3(seg(c.lt, tr, tr + 0.5)), k2 = E.out3(seg(c.lt, tr + 0.25, tr + 0.7)), kb = E.out5(seg(c.lt, tb, tb + 0.4));
     card(fr, X0, y, CW, h, c.col, { a: k1, edge: 0.35 });
     fr.text(L.label || '', X0 + 50, y + 80, { font: 'sansh', size: 40, track: 3, color: INK.text, align: 'l', a: k1 });
     const ls = fit(fr, String(L.value), 'sansh', 110, CW * 0.4);
