@@ -21,8 +21,10 @@ TYPES = {   # 件名: (必填字段, {列表字段: (最少, 最多)})
     "cards": (["items"], {"items": (2, 6)}),
     "object": (["icon"], {}),
     "flow": (["from", "to"], {}),
+    "draw": (["items"], {}),   # 自由画面：template/draw.js，检查在 draw_check.py
 }
-ICONS = set("phone laptop resume person people bed desk factory box ship plane globe money coins chartup chartdown clock calendar cart store chat ai video house briefcase chair cup bowl".split())   # 和 template/icons.js 一致
+import draw_check
+from find_icon import ALL as ICONS, suggest as icon_suggest   # 自带 28 个 + Lucide 1500+ 个（template/lucide.js），所有件的 icon 都能用
 # 字幕里允许的字：汉字、字母、数字、空格和少数数字符号；其余标点一律不许（字幕不带标点）
 SUB_OK = re.compile(r"^[一-鿿㐀-䶿A-Za-z0-9 %+×¥$/.]+$")
 CONTACT = r"微信|vx|VX|加我|私信我|联系方式|电话|二维码|QQ|扣扣|wx号|链接在评论|扣 ?1|扣 ?666|领资料|领取|免费送|私我"   # 后几个是诱导互动 / 导流话术，平台会限流
@@ -113,7 +115,7 @@ def width(s):   # 估算一行字幕的宽度（一个汉字 = 1）
     return sum(1 if "㐀" <= ch <= "鿿" else 0.3 if ch == " " else 0.58 for ch in s)
 
 
-HIDDEN = {"icon", "type", "color", "pics", "pic"}   # 这些字段不上屏（图标名、件名、颜色名、写给自己看的分镜清单），不拿来查屏上用语
+HIDDEN = {"icon", "type", "color", "pics", "pic", "kind", "id", "do"}   # 这些字段不上屏（图标名、件名、颜色名、写给自己看的分镜清单），不拿来查屏上用语
 
 
 def strings(o):
@@ -227,28 +229,38 @@ def main():
             for i, r in enumerate(d.get("rows") or []):
                 if not isinstance(r, dict) or not isinstance(r.get("value"), (int, float)) or r.get("op", "+") not in ("+", "-", "−"):
                     err.append(f"{tag} ledger 的 rows[{i}] 要写成 {{\"label\": \"卖价\", \"value\": 30}}（减的加 \"op\": \"-\"），value 写数字"); break
+        if ty == "ledger" and d.get("total") and brief_nums is not None and isinstance(d.get("rows"), list):   # 合计是程序算的：算出来要和 brief 说的总数对得上（11-18：三笔账合计亏 7.8 万，开头却说亏了 9 万）
+            rows_ok = [r for r in d["rows"] if isinstance(r, dict) and isinstance(r.get("value"), (int, float))]
+            tot = abs(sum((-1 if r.get("op") in ("-", "−") else 1) * float(r["value"]) for r in rows_ok))
+            if rows_ok and round(tot, 2) not in brief_nums and round(tot, 2) not in derived and "按" not in str(d.get("note", "")):
+                big = sorted(v for v in brief_nums if v >= 100)
+                err.append(f"{tag} ledger 合计算出来是 {tot:g}，brief 里没有这个数（brief 的数：{'、'.join(f'{v:g}' for v in big[:8])}）：几笔账加起来要等于 brief 说的总数。"
+                           f"最小改法：删掉 / 改掉不在 brief 里的那一笔，让合计对上；真是这么算的，note 写「按 … 算」")
         if ty == "bars":   # 横条的数要是字幕里说到的（11-17：模型为了躲"清单最多 2 个"，编了「1 条规矩 / 3 条规矩」这种没意义的数）
             said = set().union(set(), *[loose_nums(str(ln.get("text", ""))) for ln in s["lines"]])
             bad = [f"rows[{i}]「{r.get('label')} {r.get('value')}」" for i, r in enumerate(d.get("rows") or []) if isinstance(r, dict) and isinstance(r.get("value"), (int, float)) and float(r["value"]) not in said]
             if bad: err.append(f"{tag} bars 的 {'、'.join(bad)} 这个数字幕里没说：横条只用来比字幕里说到的几个数。最小改法：没有数可比就换成 cards（一项一样东西）；是一笔笔账就换成 ledger")
         if ty == "timeline" and d.get("breakAt") is not None and not (0 <= int(d["breakAt"]) < len(d.get("nodes") or []) - 1): err.append(f"{tag} breakAt 要小于节点数 - 1")
         if ty == "timeline" and d.get("breakStep") is not None and int(d["breakStep"]) >= len(s["lines"]): err.append(f"{tag} breakStep={d['breakStep']} 但这一镜只有 {len(s['lines'])} 句，裂不到")
-        for pth, v in [(p, v) for p, v in icon_fields(d)]:
-            if v not in ICONS: err.append(f"{tag} {pth} 的图标「{v}」没有，只能用：{' '.join(sorted(ICONS))}")
+        if ty != "draw":   # draw 的图标在 draw_check 里查
+            for pth, v in [(p, v) for p, v in icon_fields(d)]:
+                if v not in ICONS: err.append(f"{tag} {pth} 的图标「{v}」没有。像的有：{' '.join(icon_suggest(v)) or '（没有）'}。查图标：python3 scripts/find_icon.py <中文或英文词>")
         if ty == "object" and d.get("count") is not None and int(d["count"]) < 2: err.append(f"{tag} object 的 count 至少 2（一个就别写 count）")
         span, cap = len(s["lines"]), capacity(d)
         st = d.get("stamp")
         if isinstance(st, str): st = d["stamp"] = {"text": st}   # "stamp": "白干" 也认
+        draw_moving = draw_shown = None
+        if ty == "draw": draw_moving, draw_shown = draw_check.check(d, span, tag, err, warn, stamp=st)
         if st is not None:
             if not isinstance(st, dict) or not (1 <= len(str(st.get("text", "")).replace(" ", "")) <= 5) or not SUB_OK.match(str(st.get("text", "x"))): err.append(f"{tag} stamp「{(st or {}).get('text', '') if isinstance(st, dict) else st}」要 2–5 个字、不带标点，写成 {{\"text\": \"白干\"}}")
             elif st.get("at") is not None and int(st["at"]) != span - 1: err.append(f"{tag} stamp 的 at={st['at']}：章是这一段的结论，只盖在这一镜最后一句。最小改法：删掉 \"at\"")
             if ty in ("title", "statement"): warn.append(f"{tag} {ty} 上不画盖章，stamp 放到有画面的那一镜")
-        def leaves(o):
+        def leaves(o, top=True):   # 这一镜的 note 是出处小字，不算；条目里的 note（steps / cards 每条下面那行）是上屏的，算（11-18：「收了六百」写在条目 note 里被当成没画，白花一轮 pro）
             if isinstance(o, bool): return
             if isinstance(o, (int, float, str)): yield str(o)
-            elif isinstance(o, dict): yield from (x for k, v in o.items() if k not in HIDDEN | {"note", "breakAt", "breakStep", "pick", "focus", "at", "max", "pct"} for x in leaves(v))
-            elif isinstance(o, list): yield from (x for v in o for x in leaves(v))
-        on_screen = set().union(set(), *[numbers_in(x) for x in leaves(d)])
+            elif isinstance(o, dict): yield from (x for k, v in o.items() if k not in HIDDEN | {"breakAt", "breakStep", "pick", "focus", "at", "max", "pct"} and not (top and k == "note") for x in leaves(v, False))
+            elif isinstance(o, list): yield from (x for v in o for x in leaves(v, False))
+        on_screen = set().union(set(), *[numbers_in(str(x)) for x in (draw_shown if ty == "draw" else leaves(d)) if x is not None])
         on_screen |= {float(len(d[k])) for k in ("rows", "items", "paths", "nodes", "values") if isinstance(d.get(k), list)}   # 画了 5 条路，字幕说「列了 5 条」就是画面上的数
         if ty == "ledger" and d.get("total"):   # 合计是程序算出来画上去的
             tot = sum((-1 if r.get("op") in ("-", "−") else 1) * float(r.get("value") or 0) for r in d.get("rows") or [] if isinstance(r, dict) and isinstance(r.get("value"), (int, float)))
@@ -257,7 +269,8 @@ def main():
             same = lambda v: {round(v * k, 2) for k in (1, 1e3, 1e4, 1e8, 1e-3, 1e-4)}   # 12万 / 120000 / 12（suffix 写「万」）是同一个数
             miss = sorted(v for v in numbers_in(str(ln.get("text", ""))) if v >= 3 and not (same(v) & on_screen) and not (1900 <= v <= 2100))
             if miss: err.append(f"第{s['first'] + j}句「{ln.get('text')}」说了 {'、'.join(f'{v:g}' for v in miss)}，可这一镜（{ty}）画面上没有：把它写成这一镜的一条（values / rows / items 里，或 count、label），换不进去就换一个能放下它的件；或者这句不说数")
-        for j in range(cap, span):   # 这一镜多出来的句子：画面不动（停顿句）
+        still = [j for j in range(span) if j not in draw_moving and not (st and j == span - 1)] if ty == "draw" else range(cap, span)
+        for j in still:   # 画面不动的句子（停顿句）
             pauses.append((s["first"] + j, s["lines"][j], tag, ty))
         if ty in ("checklist", "steps", "cycle", "cards", "bars") and span >= 2:
             said = " ".join(str(ln.get("text", "")) for ln in s["lines"])
@@ -288,7 +301,7 @@ def main():
                 elif isinstance(o, str): yield path, o
                 elif isinstance(o, dict):
                     for k, v in o.items():
-                        if k not in ("type", "note", "breakAt", "breakStep", "pick", "max", "ok", "pct", "from"): yield from walk(v, f"{path}.{k}")
+                        if k not in ("type", "note", "breakAt", "breakStep", "pick", "max", "ok", "pct", "from") and not (ty == "draw" and (k in draw_check.brief_walk_skip() or (k == "value" and o.get("kind") == "bar") or (k == "to" and o.get("do") == "fill"))): yield from walk(v, f"{path}.{k}")
                 elif isinstance(o, list):
                     for i, v in enumerate(o): yield from walk(v, f"{path}[{i}]")
             where = {}
@@ -316,7 +329,7 @@ def main():
                             r = left[0]; tip += f"；删完 bars 只剩一条，比不了大小，整镜换成 number：\"values\": [{r.get('value')}]，\"units\": [\"{r.get('label', '')}\"]，unit 写进 suffix"
                         tip += "。"
                     err.append(f"{tag} 数字 {nums} 在 brief 里找不到：疑似编造（多半是照抄了 references 里的例句）。{tip}字幕和画面里出现的地方一起删掉或改掉；用 brief 里的数；从 brief 算出来的，note 写「按 … 算」；公开规则写「来源：…」；拿不出依据就别放数字（「示意」只给人生节点用）")
-        has_num = any(NUM.search(x) for x in strings({k: v for k, v in d.items() if k not in ("type", "note", "breakAt", "breakStep", "pick", "max")})) or any(NUM.search(str(ln.get("text", ""))) for ln in s["lines"])
+        has_num = any(NUM.search(str(x)) for x in (draw_shown if ty == "draw" else strings({k: v for k, v in d.items() if k not in ("type", "note", "breakAt", "breakStep", "pick", "max")})) if x is not None and not isinstance(x, bool)) or any(NUM.search(str(ln.get("text", ""))) for ln in s["lines"])
         if has_num and ty not in ("title", "statement", "steps") and not any(notes):
             err.append(f"{tag}（{ty}）屏上有数字，但没有 note 写出处（真实来源 / 示例 / 示意）")
         if brief.get("example") and has_num and any(notes) and not any(n and re.search("示例|示意", n) for n in notes):
@@ -350,7 +363,7 @@ def main():
             how = (f"还差 {want - n} 句。最小改法：在 {pick} 各加一句（这章画面的条目同时加一条，就是这句说的东西）" if n < want
                    else f"多了 {n - want} 句。最小改法：{pick} 各删一句（这章画面的条目同时删掉那一条），其他章一句都不动")
             err.append(f"{brief['seconds']} 秒 @ {bpm} BPM 要正好 {want} 句（一句一小节 {bar:.2f} 秒），现在 {n} 句。{how}。现在各章：{per}")
-    if shots and shots[0]["shot"].get("type") not in ("title", "statement", "timeline", "number", "compare", "fork", "object"): warn.append("开头第一镜不是钩子类（title / statement / timeline / number / compare / fork / object，见 references/02 的钩子表），确认前 3 秒能让人停下")
+    if shots and shots[0]["shot"].get("type") not in ("title", "statement", "timeline", "number", "compare", "fork", "object", "draw"): warn.append("开头第一镜不是钩子类（title / statement / timeline / number / compare / fork / object / draw，见 references/02 的钩子表），确认前 3 秒能让人停下")
     if len(lines) >= 8:   # 首尾回扣：倒数两句里要有第一句的词（看完想再刷一遍开头）
         first = re.sub(r"\s", "", str(lines[0].get("text", "")))
         tail = "".join(str(ln.get("text", "")) for ln in lines[-3:-1])
@@ -364,7 +377,8 @@ def main():
                "statement": "大字卡只演一步：这几句并进前后有画面的章，或者这章换成有条目的件",
                "title": "片名卡只演一步：后面几句另开一章，或删掉",
                "compare": "加 badge（第三句单独出），还不够就把后面几句改成说左右两边的东西",
-               "number": "values 再加这句说的那个数（units 跟着加），或者结论句加 stamp"}
+               "number": "values 再加这句说的那个数（units 跟着加），或者结论句加 stamp",
+               "draw": "这句说到的东西加一样进 items（at 写这一句），或者给已有的东西加一个 acts 动作（划掉 / 打勾 / 数字变 / 挪过去），at 写这一句"}
         by = {}
         for no, ln, tag, ty in pauses: by.setdefault((tag, ty), []).append(f"第{no}句「{ln.get('text')}」")
         fixes = "；".join(f"{tag}（{ty}）后面 {'、'.join(x)} 不动 → {HOW.get(ty, 'rows / nodes / items 多写一条（就是这句说的东西），或者结论句加 stamp 盖个章')}" for (tag, ty), x in by.items())

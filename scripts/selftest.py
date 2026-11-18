@@ -2,7 +2,7 @@
 """自测（不联网、不花钱，约 1–2 分钟）：改了技能之后跑一遍，确认没改坏。
   python3 scripts/selftest.py            全部
   python3 scripts/selftest.py --quick    跳过渲染和节拍检测（约 5 秒）
-查：脚本能编译 → 示例过检查 → 一组故意写错的稿子都被拦下 → 四种配乐能合成 → 节拍检测量得准 → 示例拼图画面体检 0 处。"""
+查：脚本能编译 → 示例过检查 → 一组故意写错的稿子都被拦下 → 自由画面写对能过、写错被拦、配音踩拍 → 五种配乐能合成 → 节拍检测量得准 → 示例拼图画面体检 0 处。"""
 import copy, json, re, subprocess, sys, tempfile
 from pathlib import Path
 
@@ -64,6 +64,40 @@ for name, mutate, want in CASES:
         errs = [l for l in out.splitlines() if l.startswith("✗")]; want = "brief 里没有"
     report(f"拦下：{name}", code == 1 and any(want in e for e in errs), (errs or ["没报错"])[0][:120])
 
+print("== 3b 自由画面 draw：写对的能过，写错的都被拦下")
+DRAW = {"type": "draw", "note": "示例", "items": [
+    {"id": "d", "kind": "icon", "icon": "desk", "label": "工位", "x": 0.3, "y": 0.28, "at": 0},
+    {"id": "n", "kind": "num", "value": 10, "suffix": " 年", "x": 0.74, "y": 0.28, "at": 0, "beat": 2},
+    {"id": "f", "kind": "icon", "icon": "factory", "label": "工厂", "x": 0.2, "y": 0.74, "at": 1},
+    {"id": "g", "kind": "icon", "icon": "globe", "label": "越南", "x": 0.8, "y": 0.74, "at": 1, "beat": 3},
+    {"kind": "arrow", "from": "f", "to": "g", "at": 1, "beat": 2},
+    {"id": "h", "kind": "icon", "icon": "house", "label": "房贷", "x": 0.5, "y": 0.74, "at": 2, "beat": 2}],
+  "acts": [{"id": "d", "do": "strike", "at": 0, "beat": 3}, {"id": "f", "do": "hide", "at": 2}, {"id": "g", "do": "hide", "at": 2}, {"id": "h", "do": "shake", "at": 2, "beat": 4}]}
+def with_draw(mut=None):
+    f = copy.deepcopy(film); d = copy.deepcopy(DRAW)
+    if mut: mut(d)
+    f["chapters"][0]["shot"] = d; f["chapters"][0].pop("pics", None); return f
+code, out = check(with_draw(), brief); errs = [l for l in out.splitlines() if l.startswith("✗")]
+report("写对的 draw 通过", code == 0, (errs or [out[-200:]])[0][:160])
+DCASES = [
+    ("图标名写错（给出像的）", lambda d: d["items"][0].__setitem__("icon", "deskk"), "像的有"),
+    ("两样东西压在一起", lambda d: d["items"][1].update(x=0.36, y=0.3), "压在一起"),
+    ("出界", lambda d: d["items"][0].update(x=0.02), "出界"),
+    ("只有字没有东西", lambda d: d.__setitem__("items", [{"kind": "text", "text": "十年", "at": 0}, {"kind": "num", "value": 10, "at": 1}]) or d.__setitem__("acts", []), "认得出的东西"),
+    ("动作早于出场", lambda d: d["acts"].append({"id": "h", "do": "check", "at": 1}), "不晚于它出场"),
+    ("连线两头挨着", lambda d: d["items"][3].update(x=0.45), "几乎挨着"),
+]
+for name, mutate, want in DCASES:
+    code, out = check(with_draw(mutate), brief); errs = [l for l in out.splitlines() if l.startswith("✗")]
+    report(f"拦下：draw {name}", code == 1 and any(want in e for e in errs), (errs or ["没报错"])[0][:120])
+with tempfile.TemporaryDirectory() as d:
+    (Path(d) / "f.json").write_text(json.dumps(with_draw(), ensure_ascii=False), encoding="utf-8")
+    ev = json.loads(run("node", SKILL / "scripts/make_cues.mjs", Path(d) / "f.json").stdout)["events"]
+    bt = 60 / film.get("bpm", 112.8); g = bt / 4; t1 = 4 * bt * 3
+    act = [e for e in ev if e["t"] < t1 and e["type"] in ("pluck", "bell", "knock", "tick")]
+    off = [e["t"] for e in act if abs(e["t"] / g - round(e["t"] / g)) * g > 0.002]
+    report(f"draw 的出场和动作都配了音、踩在拍上（{len(act) - len(off)}/{len(act)}）", len(act) >= 8 and not off, str(off[:5]))
+
 print("== 4 五种配乐都能合成")
 with tempfile.TemporaryDirectory() as d:
     for st in ("drive", "tension", "warm", "lofi", "doc"):
@@ -105,6 +139,17 @@ if "--quick" not in sys.argv:
         try: qa = json.loads(r.stdout or "null")
         except json.JSONDecodeError: qa = None
         report("frame_qa 0 处", qa == [], (r.stdout or r.stderr)[-300:])
+
+if "--quick" not in sys.argv:
+    print("== 6b 自由画面拼图：画面体检 0 处")
+    with tempfile.TemporaryDirectory() as d:
+        run("bash", SKILL / "scripts/new_film.sh", d)
+        (Path(d) / "film.json").write_text(json.dumps(with_draw(), ensure_ascii=False), encoding="utf-8")
+        (Path(d) / "brief.json").write_text((EX / "brief.json").read_text(encoding="utf-8"), encoding="utf-8")
+        r = run(PY, "-W", "ignore", SKILL / "scripts/frame_qa.py", d, "--json")
+        try: qa = json.loads(r.stdout or "null")
+        except json.JSONDecodeError: qa = None
+        report("frame_qa 0 处（draw 那一章也画得出来）", qa == [], (r.stdout or r.stderr)[-300:])
 
 print("== 7 卡点：画面变化和音效都落在鼓点上（教程第 02 / 03 条，作者 11-18 确认）")
 f = copy.deepcopy(film); bpm = f.get("bpm", 112.8); beat = 60 / bpm

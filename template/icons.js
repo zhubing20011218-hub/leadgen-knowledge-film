@@ -41,7 +41,7 @@ const ICONS = {
 
 /* 画一个图标：s = 像素尺寸（图标格子 100 → s），k = 进场 0..1（缩放 + 透明），state: 'no' 盖一道红斜杠 / 'ok' 右下角一个勾 */
 function drawIcon(fr, name, x, y, s, col, k = 1, state) {
-  const f = ICONS[name]; if (!f || k <= 0) return;
+  const f = ICONS[name] || lucide(name); if (!f || k <= 0) return;
   fr.g({ at: [x, y], s: (s / 100) * (0.85 + 0.15 * E3(k)), a: k }, () => {
     f(fr, col);
     if (state === 'no') { fr.line(-48, -48, 48, 48, { color: NEON.red.main, w: 8, glow: 14 }); }
@@ -49,6 +49,19 @@ function drawIcon(fr, name, x, y, s, col, k = 1, state) {
   });
 }
 const E3 = x => 1 - Math.pow(1 - x, 3);
+/* 自带的 28 个没有，就从 Lucide 图标库找（template/lucide.js，1500+ 个，名字查法：python3 scripts/find_icon.py 快递）。
+ * Lucide 是 24×24 的线条图标：放大到和自带图标一样的 ±46 格子，描成同样粗细的霓虹线 */
+const LUC = {};
+function lucide(name) {
+  const d = window.LUCIDE && window.LUCIDE[name]; if (!d) return null;
+  if (!LUC[name]) { const parts = d.split('|').map(p => new Path2D(p)); LUC[name] = (fr, c) => {
+    const x = fr.x; x.save(); x.translate(-46, -46); x.scale(92 / 24, 92 / 24);
+    x.lineWidth = 1.25; x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = c; x.shadowColor = c; x.shadowBlur = 10;
+    parts.forEach(p => x.stroke(p)); x.restore();
+  }; }
+  return LUC[name];
+}
+const hasIcon = name => !!(ICONS[name] || (window.LUCIDE && window.LUCIDE[name]));
 
-window.ICONS = ICONS; window.drawIcon = drawIcon;
+window.ICONS = ICONS; window.drawIcon = drawIcon; window.hasIcon = hasIcon;
 })();

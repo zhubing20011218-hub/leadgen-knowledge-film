@@ -14,8 +14,10 @@ command -v ffmpeg >/dev/null || { echo "缺 ffmpeg"; exit 2; }
 $PY "$SKILL/engine/get_fonts.py" --check >/dev/null || $PY "$SKILL/engine/get_fonts.py"
 
 # 工程里的模板是建工程时拷的；技能升级后旧工程不会自己变。--update-template 换成技能里最新的（工程里自己写的件会被覆盖）
-if [ "$UPD" = 1 ]; then cp "$SKILL/template/"{index.html,palette.js,icons.js,film.js,scenes.js} "$P/"; echo "模板已换成技能里最新的"; fi
-for f in index.html palette.js icons.js film.js scenes.js; do
+if [ "$UPD" = 1 ]; then cp "$SKILL/template/"*.html "$SKILL/template/"*.js "$P/"; echo "模板已换成技能里最新的"; fi
+for f in $(cd "$SKILL/template" && ls *.html *.js); do [ -e "$P/$f" ] || { cp "$SKILL/template/$f" "$P/"; echo "补上了技能新加的模板文件：$f"; }; done   # 新加的文件工程里没有，直接补（不会覆盖任何东西）
+if grep -q '"draw"' "$P/film.json" 2>/dev/null && ! grep -q 'draw.js' "$P/index.html"; then echo "film.json 用了自由画面 draw，可工程的 index.html 是旧的（不加载 draw.js）：bash $SKILL/scripts/build.sh $P --update-template"; exit 1; fi
+for f in $(cd "$SKILL/template" && ls *.html *.js); do
   cmp -s "$SKILL/template/$f" "$P/$f" || { echo "提醒：$P/$f 和技能里的模板不一样（技能升级过，或者你改过）。要换成最新的：bash $SKILL/scripts/build.sh $P --update-template"; break; }
 done
 BRIEF=""; [ -f "$P/brief.json" ] && BRIEF="$P/brief.json"

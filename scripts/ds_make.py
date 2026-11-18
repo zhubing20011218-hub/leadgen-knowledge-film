@@ -98,8 +98,10 @@ def check(proj):
 
 
 def docs():
-    parts = ["SKILL.md", "references/02-引流叙事骨架.md", "references/03-分镜与画面件.md", "references/06-合规红线.md"]
-    return "\n\n".join((SKILL / p).read_text(encoding="utf-8") for p in parts)
+    parts = ["SKILL.md", "references/02-引流叙事骨架.md", "references/03-分镜与画面件.md", "references/07-画面怎么想出来.md", "references/06-合规红线.md"]
+    zh = json.loads((SKILL / "scripts/icon_index.json").read_text(encoding="utf-8"))["zh"]   # 模型跑不了 find_icon.py：把中文常用词 → 图标名直接给它
+    icons = "常用图标（中文 = 名字，draw 和各个件的 icon 都能写；这里没有的，写 Lucide 图标库的英文名，写错检查会给几个像的）：" + "；".join(f"{k}={v}" for k, v in zh.items())
+    return "\n\n".join((SKILL / p).read_text(encoding="utf-8") for p in parts) + "\n\n" + icons
 
 
 WRITE_SYS = ("你在用下面这个技能做一条竖屏引流知识短片。需求访谈已经做完（brief.json），结构用推荐骨架，出路按 brief.outlet。"
@@ -117,8 +119,9 @@ REVIEW_SYS = """你是竖屏知识短片的严格评审。给你一张拼图：�
 5. 开头三格能不能让人停下来？结尾有没有给出下一步？
 不要报：配色风格、霓虹发光、字体（这些是固定的样式）；不要客套。
 改法不许：编 brief 里没有的数字、加联系方式或"扣1 / 领资料 / 私我"这类诱导互动的话、承诺收入；结尾的下一步只能是主页 / 合集 / 评论区。
-改法只能用现有的件：title statement number bars ledger ring timeline fork(可加 focus) compare checklist steps cycle cards object flow；
-"缺一样认得出的东西"就建议 object（一堆写 count）或给条目加 icon，图标只能从这些里选：{ICONS}。
+改法只能用现有的件：title statement number bars ledger ring timeline fork(可加 focus) compare checklist steps cycle cards object flow，或自由画面 draw（items / acts）；
+"缺一样认得出的东西"就建议给条目加 icon、object（一堆写 count），或在 draw 里加一样 icon / phone / box / crowd；图标用中文说是什么东西就行（自带的有 {ICONS}，另有 1500 多个线条图标）。
+draw 的画面：东西挤在一角 / 太小 → 建议改 x、y、size；两样压在一起 → 说挪哪一样、往哪挪。
 每个问题归一类：
 - content：改 film.json 就能解决（换一个件、删几条、缩短一段字、加 head、加图标、加 stamp……），fix 写清楚怎么改；
   改法只在同一镜里改：让第 k 条就是第 k 句说的东西、改这一条的字、加 icon、结论句加 stamp；字幕里没说的东西不许加进画面。
@@ -198,6 +201,8 @@ def plan_lines(brief):
               "③ 照 pics 在章上写 shot（这章的画面，写在 lines 前面）：挑一个能把这几条都装下的件（几条说的是不同的事就用 steps / checklist / cards，条目里可以写数），values / rows / nodes / items 按 pics 的顺序一次写好，stamp 盖章也算一条；"
               "最后写 lines：句子里不写 shot，第 k 句说的就是第 k 条，字幕里说的数画面上必须有；"
               "④ 某条装不进这个件：先换个说法，让这句说画面上有的东西；还不行，才在这章里开第二镜。"
+              "先想画面再选件（references/07）：拆出这章句子里的东西和动作，给东西找观众认得的样子，让动词在屏上真的发生；"
+              "现成的件装得下就用件，装不下（直播间、私信、订单、快递路线、一群人里只有几个、一张通知 / 单据）就用 draw 自己搭——全片至少一两章用 draw 画出这个题目自己的场景，主体往大了画、东西 3–5 样、每句至少一个出场或动作。"
               "相邻两章换不同的件；steps / checklist 只是一行行字，全片最多用 2 次（片尾「下一步」用 steps 正合适）——有数就用 number / bars / ring，一笔笔算账用 ledger（合计程序自动算），几条路用 fork（全是死路写 pick: -1，pick 不能是死路），几样东西用 cards / object，从 A 到 B 用 flow，同一件事两种情况用 compare。"
               f"全片 {n} 句最多 {pic_max(n)} 个画面；最多 {pause_max(n)} 句可以画面不动（只给提问、结论，而且不许说数字）；"
               "一章最后那句是结论或情绪落点（白干、没回音、做成了）时，给这一镜加 stamp 盖一个 2–5 字的章，这句就有画面了。")

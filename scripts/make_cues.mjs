@@ -134,7 +134,7 @@ for (const sh of SHOTS) {
       if (i === 0) { note(t, step(2)); return; }
       const upward = x > v[i - 1], run = upward ? [0, 1, 2, 4] : [4, 2, 1, 0];   // 往上涨：上行；往下掉：下行
       run.forEach((k, j) => note(t + j * BEAT / 4, step(k + (upward ? 1 : 0)), 0.07));
-      if (!upward) thud(t + 0.6 * BEAT, 0.2);
+      if (!upward) thud(t + 0.5 * BEAT, 0.2);
     });
   } else if (ty === 'fork' && d.focus == null) {
     const paths = d.paths || [], none = d.pick === -1 || d.pick === 'none', pick = none ? -1 : d.pick != null ? Number(d.pick) : paths.length - 1;
@@ -174,6 +174,31 @@ for (const sh of SHOTS) {
     else { note(t0, step(0)); note(t0 + BEAT, step(2), 0.06); }
   } else if (ty === 'flow') {
     const tr = span > 1 ? BAR : BEAT; note(t0, step(0)); events.push({type: 'whoosh', t: r3(t0 + tr), dur: Math.min(1, 2 * BEAT), gain: 0.14}); note(t0 + tr + 2 * BEAT, step(4), 0.1);   // 出发、到达都在拍上
+  } else if (ty === 'draw') {   // 自由画面：每样东西出场、每个动作都在它那一拍上，和 template/draw.js 同一个时刻
+    const T = (a, b) => t0 + (Number(a) || 0) * BAR + (Math.min(Math.max(Number(b) || 1, 1), 4) - 1) * BEAT;
+    (d.items || []).forEach((it, i) => {
+      const t = T(it.at, it.beat);
+      if (it.kind === 'arrow' || it.kind === 'line') { events.push({type: 'whoosh', t: r3(Math.max(0, t - 0.2)), dur: 0.2, gain: 0.08}); note(t, step(i + 2), 0.05, 'pluck'); return; }   // 嗖一下引进来，音落在拍上（不跟动画往后挪）
+      note(t, step(i), it.kind === 'num' || it.kind === 'phone' ? 0.1 : 0.08);
+      if (it.kind === 'crowd') for (let b = 1; b < 4; b++) note(t + b * BEAT, step(i + b), 0.05, 'pluck');   // 一群东西分四拍冒出来
+      if (it.kind === 'box' || it.kind === 'phone') (it.rows || []).forEach((_, k) => events.push({type: 'tick', t: r3(t + (k + 1) * BEAT), freq: 3200, gain: 0.05}));   // 一行一拍写出来
+      if (it.kind === 'bar') note(t + BEAT, step(i + 2), 0.06, 'pluck');
+    });
+    const val = {}; (d.items || []).forEach((it) => { if (it.id) val[it.id] = Number(it.value); });
+    for (const a of d.acts || []) {
+      const t = T(a.at, a.beat);
+      if (a.do === 'strike' || a.do === 'cross') { thud(t, 0.26); note(t, up(ladder[0], 0), 0.06, 'pluck'); }
+      else if (a.do === 'check') stab(t, [step(2), step(4)], 0.08);
+      else if (a.do === 'count' || a.do === 'fill') {
+        const from = a.do === 'count' ? val[a.id] : 0.5, upward = Number(a.to) >= from, run = upward ? [0, 1, 2, 4] : [4, 2, 1, 0];
+        run.forEach((k, j) => note(t + j * BEAT / 4, step(k + (upward ? 1 : 0)), 0.07)); if (!upward) thud(t + 0.5 * BEAT, 0.2);
+        if (a.do === 'count') val[a.id] = Number(a.to);
+      }
+      else if (a.do === 'mark' || a.do === 'grow' || a.do === 'flash' || a.do === 'swap' || a.do === 'color') note(t, step(4), 0.09, 'bell');
+      else if (a.do === 'move') { events.push({type: 'whoosh', t: r3(Math.max(0, t - 0.2)), dur: 0.2, gain: 0.1}); note(t, step(3), 0.06); }
+      else if (a.do === 'shake') events.push({type: 'knock', t: r3(t), freq: 320, gain: 0.2});
+      else if (a.do === 'hide' || a.do === 'dim') events.push({type: 'tick', t: r3(t), freq: 1800, gain: 0.04});
+    }
   } else if (ty === 'statement' || ty === 'title') {
     stab(t0, [step(0), step(2), step(4)], 0.06);
   }

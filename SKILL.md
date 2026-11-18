@@ -5,7 +5,7 @@ description: >
   霓虹章节风格（顶栏章节 + 进度、每章一个主色、大标题大数字、关键词染色）。第一件事永远是先问需求。
   推荐的叙事骨架是"人生节点 → 断裂 → 分叉 → 收窄 → 出路 → 行动"，把当下裁员、迷茫的情绪接住，再给一条能走的路；
   出路默认是跨境电商，也可以是用户自己的业务或别的方向，结构也可以和用户商量着改。
-  模型只写一份 film.json（字幕 + 每一镜用哪个画面件），画面由自带的 15 个件和 28 个图标画，所以用 DeepSeek 这类便宜模型也能稳定出片。
+  模型只写一份 film.json（字幕 + 每一镜画什么），画面由引擎画：15 个现成的件管常见句型，自由画面 `draw` 用 1500 多个图标、手机、卡片、人群、进度条、箭头搭这个题目特有的场景——所以用 DeepSeek 这类便宜模型也能稳定出片，题目也不受限。
   用户说"做一条引流的视频""讲失业 / 裁员 / 转行 / 迷茫""为什么做跨境电商""电商 + AI""知识短片""卡点视频"
   "没有旁白的科普短视频""像 Vibe 知识大赏那种片"，或者给了一个主题、一段经历、一组数据要做成竖屏短片时使用。
 ---
@@ -39,7 +39,7 @@ bash scripts/setup.sh             # 缺东西就跑一次：建 .venv、装 play
 编 brief 里没有的数字或经历（「凑巧算得出」的数要写明按什么算）、一句一换画面、说了数的句子画面上却没有、
 把死路当成岔路的答案、横条乱填数、照着评审意见加"扣1 领资料"这类诱导话术。
 
-**改了技能本身**（画面件、检查、配乐、流程）先跑 `python3 scripts/selftest.py`：不联网不花钱，约 2 分钟（--quick 跳过渲染，约 10 秒），22 项全过才算没改坏。
+**改了技能本身**（画面件、检查、配乐、流程）先跑 `python3 scripts/selftest.py`：不联网不花钱，约 2 分钟（--quick 跳过渲染，约 10 秒），31 项全过才算没改坏。
 
 ## 0. 先问需求（没拿到答案不开工）
 
@@ -74,7 +74,8 @@ bash scripts/setup.sh             # 缺东西就跑一次：建 .venv、装 play
 - 全片画面数 ≤ 句数的一半；画面不动的句子 ≤ 1/5，只给提问、结论；结论句可以用 `stamp` 盖一个章；
 - 每个数字写出处（note）；反转那一章标 `"turn": true`。
 
-**只写 film.json，不写画面代码。** 15 个件真的不够用时才写新件（03 最后一节）。
+**只写 film.json，不写画面代码。** 每一章先想清楚画面（`references/07-画面怎么想出来.md`：拆出句子里的东西和动作 → 找观众认得的样子 → 让动词真的发生 → 一镜撑几句、每句加一样）；
+现成的件装得下就用件，装不下就用 `draw` 自己搭；一条片至少一两章用 `draw` 画出这个题目自己的场景。`draw` 也搭不出来才写新件（03 最后一节）。
 
 ## 3. 出片
 
@@ -122,12 +123,13 @@ bash scripts/build.sh ~/Desktop/知识短片/<片名>                   # 检查
 SKILL.md                         本文件
 references/01-需求访谈.md         七问的问法、追问、反例、brief.json 格式
 references/02-引流叙事骨架.md     六拍骨架、四种角度、60/90 秒怎么拆、写坏的样子
-references/03-分镜与画面件.md     film.json 格式、15 个件、28 个图标、怎么选件、怎么写新件
+references/03-分镜与画面件.md     film.json 格式、15 个件 + 自由画面、图标、怎么选件、怎么写新件
+references/07-画面怎么想出来.md   为什么要有画面、怎么从一句话想出画面、画成什么样、怎么动、draw 的字段
 references/04-配乐与卡点.md       一句一小节、五种合成风格、用自己的歌（自动卡点 / 选歌）、平台曲库版、混音规格
 references/05-检查表.md           机器检查 + 人看三条 + 交付清单
 references/06-合规红线.md         平台和法律边界、可替换的说法
-template/                        画面模板：film.js（播放器）scenes.js（15 个件）icons.js（28 个图标）palette.js（章节色）
+template/                        画面模板：film.js（播放器）scenes.js（15 个件）draw.js（自由画面）icons.js + lucide.js（图标）palette.js（章节色）
 engine/                          渲染引擎（MIT，来源见 LICENSE-THIRD-PARTY.md）；字体下载到 engine/fonts/
-scripts/                         env_check.py / setup.sh / new_film.sh / build.sh / ds_make.py（DeepSeek 全自动）/ check_film.py / validate_brief.py / sheet_times.py / make_cues.mjs（作曲）/ score.mjs（合成器）/ fit_song.py（用自己的歌、选歌）/ publish_note.py（发布说明）/ cover.py（封面）/ frame_qa.py（画面体检）/ selftest.py（自测）
+scripts/                         env_check.py / setup.sh / new_film.sh / build.sh / ds_make.py（DeepSeek 全自动）/ check_film.py / validate_brief.py / sheet_times.py / make_cues.mjs（作曲）/ score.mjs（合成器）/ fit_song.py（用自己的歌、选歌）/ publish_note.py（发布说明）/ cover.py（封面）/ frame_qa.py（画面体检）/ find_icon.py（按中文找图标）/ draw_check.py（自由画面的检查）/ selftest.py（自测）
 examples/01-被裁之后/             示例：brief.json（数字是示例）+ film.json
 ```
